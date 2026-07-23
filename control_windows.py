@@ -30,6 +30,8 @@ KEYEVENTF_KEYUP = 0x0002
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_ABSOLUTE = 0x8000
 MOUSEEVENTF_VIRTUALDESK = 0x4000          # coordenadas sobre todos los monitores
+MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
+MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP = 0x0008, 0x0010
 
 VK_CONTROL = 0x11
 VK_OEM_PLUS, VK_OEM_MINUS = 0xBB, 0xBD    # teclas +/- de la fila principal
@@ -95,6 +97,8 @@ class EntradaWindows:
         self.vk_menos = VK_SUBTRACT if teclado_numerico else VK_OEM_MINUS
 
         self._cursor_sim: tuple[int, int] | None = None   # cursor falso en simular
+        self.izq_pulsado = False          # estado de los botones, para poder
+        self.der_pulsado = False          # soltarlos siempre al terminar
         if not simular:
             habilitar_dpi()
         # Origen y tamano del escritorio virtual (soporta varios monitores)
@@ -152,6 +156,39 @@ class EntradaWindows:
             dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE
             | MOUSEEVENTF_VIRTUALDESK)))
 
+    def _evento_raton(self, flags: int) -> None:
+        """Envia un evento de raton sin desplazamiento (solo botones)."""
+        self._enviar(INPUT(type=INPUT_RATON, mi=MOUSEINPUT(
+            dx=0, dy=0, mouseData=0, time=0, dwExtraInfo=0, dwFlags=flags)))
+
+    def boton(self, derecho: bool, presionar: bool) -> None:
+        """Pulsa o suelta un boton del raton, evitando eventos repetidos.
+
+        Mantener el estado permite dos cosas: arrastrar (pulsar, mover, soltar)
+        y garantizar en `soltar_todo` que ningun boton se queda hundido.
+        """
+        pulsado = self.der_pulsado if derecho else self.izq_pulsado
+        if pulsado == presionar:          # ya esta en ese estado: nada que hacer
+            return
+
+        if derecho:
+            flags = MOUSEEVENTF_RIGHTDOWN if presionar else MOUSEEVENTF_RIGHTUP
+            self.der_pulsado = presionar
+        else:
+            flags = MOUSEEVENTF_LEFTDOWN if presionar else MOUSEEVENTF_LEFTUP
+            self.izq_pulsado = presionar
+
+        if self.simular:
+            lado = "der" if derecho else "izq"
+            print(f"[sim] boton {lado} {'abajo' if presionar else 'arriba'}")
+            return
+        self._evento_raton(flags)
+
+    def clic(self, derecho: bool = False) -> None:
+        """Clic completo (pulsar y soltar) en el sitio donde este el cursor."""
+        self.boton(derecho, True)
+        self.boton(derecho, False)
+
     # -- acciones publicas -------------------------------------------------- #
 
     def titulo_ventana_activa(self) -> str:
@@ -185,7 +222,16 @@ class EntradaWindows:
             self._enviar(self._tecla(VK_CONTROL, soltar=True))
 
     def soltar_todo(self) -> None:
-        """Red de seguridad al salir: asegura que Ctrl no queda pulsado."""
+        """Red de seguridad: suelta Ctrl y los botones del raton.
+
+        Dejar un boton hundido bloquearia el equipo (todo seria un arrastre
+        infinito), asi que esto se llama siempre al salir, pase lo que pase.
+        """
+        try:
+            self.boton(derecho=False, presionar=False)
+            self.boton(derecho=True, presionar=False)
+        except OSError:
+            pass
         if self.simular:
             print("[sim] soltar_todo")
             return

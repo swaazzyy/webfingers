@@ -32,7 +32,10 @@
       "Bash(.venv/Scripts/python.exe -c \"import json; json.load\\(open\\(r'.claude/settings.local.json'\\)\\); print\\('valid JSON'\\)\")",
       "Bash(gh auth *)",
       "PowerShell($gh = Get-Command gh -ErrorAction SilentlyContinue; if \\($gh\\) { \"gh at: $\\($gh.Source\\)\"; gh --version; \"--- auth ---\"; gh auth status 2>&1 | Select-Object -First 6 } else { \"gh NOT INSTALLED\" })",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(git fetch *)",
+      "Bash(git push *)",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_clics.py\" 2>$null)"
     ]
   }
 }

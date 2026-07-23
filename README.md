@@ -9,10 +9,12 @@ la mano **hace zoom en la ventana activa**. Todo se maneja con las manos.
 | Gesto | Patrón de dedos | Qué hace |
 |---|---|---|
 | `APUNTANDO` | solo el índice | **mueve el cursor** de Windows (relativo, tipo trackpad) |
+| `CLIC IZQ` | juntar pulgar e índice (pinza) | **clic izquierdo**; mantén y mueve para **arrastrar** |
+| `CLIC DER` | índice y medio estirados y **juntos** | **clic derecho** |
 | `MANO ABIERTA` | los cinco dedos extendidos | **acercar** (zoom in) de forma sostenida |
 | `PUNO` | ningún dedo extendido | **alejar** (zoom out) de forma sostenida |
 | `PULGAR ARRIBA` | solo el pulgar hacia arriba | mantenerlo 1,2 s **activa o desactiva** el control |
-| `PAZ` | índice y medio separados | mantenerlo 2 s **cierra** el programa |
+| `PAZ` | índice y medio **separados** | mantenerlo 2 s **cierra** el programa |
 
 Cuando la mano no encaja en ninguno se muestra `---`.
 
@@ -92,9 +94,7 @@ descarga solo en el primer arranque.
 
 Con el gesto de **apuntar** (solo el índice), el **cursor real de Windows** se
 mueve según *cuánto* desplaces la mano, no según dónde la pongas — igual que un
-ratón o un trackpad. Funciona en cualquier programa: señalar, pasar por encima,
-recorrer menús. (De momento solo mueve el cursor; no hace clic — se puede añadir
-si lo necesitas.)
+ratón o un trackpad. Funciona en cualquier programa.
 
 Si bajas la mano y vuelves a apuntar, el cursor **continúa donde estaba**: al
 retomar el gesto el programa se re-ancla a la posición real del cursor, así que
@@ -115,6 +115,33 @@ diana y la estela como referencia.
 > transparente que cubría todo el escritorio. Daba problemas (se veía como una
 > capa opaca que "apagaba" la pantalla), así que se eliminó por completo: ahora
 > se mueve directamente el cursor del sistema.
+
+## Los clics
+
+- **Clic izquierdo** → junta el **pulgar y el índice** (pinza). Una pinza corta
+  es un clic; si la **mantienes cerrada y mueves la mano, arrastras**
+  (arrastrar y soltar, seleccionar texto, mover ventanas).
+- **Clic derecho** → estira **índice y medio juntos**, pegados. Hay que
+  mantenerlo un instante (`ESTABILIDAD_CLIC_DER`, 0,2 s).
+
+Dos detalles pensados para que no falle:
+
+**La pinza no se confunde con el puño.** Al juntar los dedos el índice se dobla,
+y la comprobación angular normal lo leería como mano cerrada — que hace *zoom
+out*. Por eso `es_pinza()` exige además que la punta del índice siga **lejos de
+su nudillo**: en una pinza el dedo sigue estirado hacia fuera, en un puño queda
+recogido contra la palma. La pinza se comprueba **antes** que el puño.
+
+**El clic no arrastra el cursor sin querer.** Al cerrar la pinza el cursor se
+**congela** en el sitio, así que el clic cae justo donde apuntabas. Solo cuando
+mueves la mano más de `UMBRAL_ARRASTRE` (16 px) pasa a arrastrar de verdad.
+
+El clic derecho exige mantener el gesto porque, al hacer la paz (salir), los
+dedos pasan un instante por la posición de "juntos"; ese cruce fugaz no llega a
+los 0,2 s y por tanto no dispara un clic.
+
+**Seguridad:** el botón nunca se queda hundido. Se suelta al perder la mano, al
+apagar el control, al cambiar de gesto y al salir del programa (`soltar_todo`).
 
 ## El zoom (abrir / cerrar la mano)
 
@@ -147,6 +174,9 @@ Todo está agrupado en el bloque *Configuración* al inicio de
 - `ANCHO`/`ALTO` — 960×540 es un buen equilibrio; 1280×720 se ve mejor pero
   cuesta en dibujado.
 - `GANANCIA_PUNTERO`, `ACELERACION` — velocidad y aceleración del puntero.
+- `UMBRAL_PINZA` — cuánto hay que juntar pulgar e índice para que cuente como
+  clic (más alto = más sensible). `UMBRAL_ARRASTRE` — cuánto hay que mover la
+  mano para pasar de clic a arrastre.
 - `ZOOM_INTERVALO` — cadencia del zoom mientras mantienes la mano abierta o
   cerrada (más bajo = zoom más rápido).
 - `ESPERA_CONTROL`, `ESPERA_SALIR` — cuánto hay que mantener pulgar arriba y paz.
@@ -184,6 +214,13 @@ Con pruebas automáticas, sin cámara:
   coordenadas negativas).
 - Zoom por abrir/cerrar la mano: primer clic inmediato, cadencia mientras se
   mantiene, inversión instantánea palma↔puño y corte al soltar.
+- **Clics**: la pinza pulsa y suelta el botón; un temblor pequeño sigue siendo
+  clic y un movimiento claro pasa a arrastre; el cursor se congela durante el
+  clic; el clic derecho pulsa y suelta sin quedarse abajo y no se dispara al
+  pasar hacia la paz. Caso adversario cubierto: **un puño con el pulgar tocando
+  la punta del índice se clasifica como puño, no como clic**.
+- **Seguridad del botón**: `soltar_todo()` libera ambos botones, y cambiar de
+  gesto (p. ej. de pinza a mano abierta) lo suelta — nunca queda hundido.
 - `AccionSostenida`: progreso, disparo único y rearme tras soltar.
 - **Movimiento real del cursor**: `mover_cursor` coloca el cursor de Windows en
   el punto pedido (llamada real a `SendInput`, verificada con `GetCursorPos` y
@@ -192,6 +229,6 @@ Con pruebas automáticas, sin cámara:
   y con el control apagado no se mueve nada.
 - `sizeof(INPUT)` correcto en 64 bits.
 
-Sin cámara, 30 + 8 comprobaciones en verde. Sin probar: la webcam en vivo y el
-efecto real del zoom sobre una aplicación concreta. Eso hay que ejecutarlo
-delante de la cámara.
+Sin cámara, 75 comprobaciones en verde (30 puntero/zoom + 30 clics + 9 dispatch
++ 6 gestos). Sin probar: la webcam en vivo y el efecto real del zoom y los clics
+sobre una aplicación concreta. Eso hay que ejecutarlo delante de la cámara.
