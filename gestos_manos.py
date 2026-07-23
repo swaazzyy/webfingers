@@ -1,14 +1,14 @@
 """
 Detector de gestos de mano en tiempo real (MediaPipe Tasks + OpenCV).
 
-Todo se maneja con las manos: no se toca el raton en ningun momento (ni se
-mueve el cursor ni se envian clics) y las teclas son solo un respaldo.
+Todo se maneja con las manos; las teclas son solo un respaldo. El cursor del
+raton se mueve, pero no se envian clics.
 
 Gestos:
     - Apuntando (solo indice)
-        mueve un puntero propio por el escritorio de forma RELATIVA, como un
-        trackpad: la mano lo empuja segun cuanto se mueva; al bajar la mano y
-        volver a apuntar, continua desde donde se quedo
+        mueve el CURSOR REAL de Windows de forma RELATIVA, como un trackpad:
+        la mano lo empuja segun cuanto se mueva; al bajar la mano y volver a
+        apuntar, continua desde donde se quedo (embrague)
     - Mano abierta -> ACERCAR (zoom in) de forma sostenida
     - Puno         -> ALEJAR  (zoom out) de forma sostenida
         el zoom se envia como Ctrl + '+' / Ctrl + '-' a la ventana seleccionada
@@ -56,7 +56,6 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
 
 from control_windows import EntradaWindows
-from puntero_pantalla import PunteroPantalla
 
 # --------------------------------------------------------------------------- #
 # Configuracion
@@ -139,9 +138,6 @@ COLORES = {                 # BGR, para dibujar sobre el frame de OpenCV
     APUNTANDO: (220, 90, 220),
     DESCONOCIDO: (170, 170, 170),
 }
-
-# Color del puntero de tkinter (RGB)
-COLOR_PUNTERO_APUNTAR = "#dc5adc"
 
 # --------------------------------------------------------------------------- #
 # Indices de landmarks (mapa de 21 puntos de MediaPipe Hands)
@@ -315,39 +311,33 @@ class AccionSostenida:
 # --------------------------------------------------------------------------- #
 
 class ControlPuntero:
-    """Puntero relativo: la mano lo empuja como el dedo empuja un trackpad.
+    """Air-mouse relativo: la mano empuja el cursor real como el dedo un trackpad.
 
     No mapea la posicion del dedo a la pantalla, sino su *desplazamiento* entre
-    frames. Al perder el gesto se conserva la posicion, asi que puedes bajar la
-    mano, volver a apuntar y el puntero sigue donde estaba (como levantar un
-    raton para recolocarlo). No toca el raton del sistema: solo dice donde
-    pintar el puntero propio.
+    frames, y con el mueve el cursor de Windows. Al perder el gesto se re-ancla
+    a la posicion real del cursor, asi que puedes bajar la mano, volver a apuntar
+    y el cursor sigue donde estaba (como levantar un raton para recolocarlo).
     """
 
     def __init__(self, entrada: EntradaWindows) -> None:
         self.entrada = entrada
-        # Arranca en el centro del escritorio virtual.
-        self._x = entrada.x0 + entrada.ancho / 2.0
-        self._y = entrada.y0 + entrada.alto / 2.0
+        self._x, self._y = entrada.posicion_cursor()
         self._dedo: tuple[float, float] | None = None   # punta suavizada (px cam)
 
     def reiniciar(self) -> None:
-        """Corta el enganche con el dedo sin mover el puntero (efecto embrague).
+        """Suelta el enganche con el dedo (efecto embrague).
 
-        La proxima llamada volvera a anclarse a la nueva posicion del dedo, de
-        modo que recolocar la mano no provoca ningun salto.
+        La proxima llamada se re-anclara a donde este el cursor, de modo que
+        recolocar la mano no provoca ningun salto.
         """
         self._dedo = None
 
-    def centrar(self) -> None:
-        self._x = self.entrada.x0 + self.entrada.ancho / 2.0
-        self._y = self.entrada.y0 + self.entrada.alto / 2.0
-
     def actualizar(self, punta: tuple[float, float],
                    ancho: int, alto: int) -> tuple[int, int]:
-        """Desplaza el puntero segun cuanto se movio el dedo. Devuelve (x, y)."""
-        if self._dedo is None:               # primer frame: anclar, no mover
+        """Desplaza el cursor segun cuanto se movio el dedo. Devuelve (x, y)."""
+        if self._dedo is None:               # primer frame: anclar al cursor real
             self._dedo = punta
+            self._x, self._y = self.entrada.posicion_cursor()
             return int(round(self._x)), int(round(self._y))
 
         # Suavizado ligero de la punta para quitar temblor sin anadir retraso.
@@ -368,7 +358,9 @@ class ControlPuntero:
                            self.entrada.x0, self.entrada.x0 + self.entrada.ancho - 1)
         self._y = recortar(self._y + dy * empuje,
                            self.entrada.y0, self.entrada.y0 + self.entrada.alto - 1)
-        return int(round(self._x)), int(round(self._y))
+        pos = (int(round(self._x)), int(round(self._y)))
+        self.entrada.mover_cursor(*pos)
+        return pos
 
 
 class ControlZoom:
@@ -549,10 +541,6 @@ def main() -> None:
 
     entrada = EntradaWindows(simular=SIMULAR_ENTRADA,
                              teclado_numerico=ZOOM_NUMERICO)
-    puntero_pantalla = PunteroPantalla(entrada.x0, entrada.y0,
-                                       entrada.ancho, entrada.alto,
-                                       largo_estela=LARGO_ESTELA,
-                                       grosor_max=GROSOR_ESTELA)
     puntero = ControlPuntero(entrada)
     zoom = ControlZoom(entrada)
     estela_camara: deque[tuple[float, float]] = deque(maxlen=LARGO_ESTELA)
@@ -635,7 +623,6 @@ def main() -> None:
                     control = not control
                     puntero.reiniciar()
                     zoom.reiniciar()
-                    puntero_pantalla.ocultar()
                 if disparo_salir:
                     break
 
@@ -654,27 +641,24 @@ def main() -> None:
                     puntero.reiniciar()
                     zoom.reiniciar()
                     estela_camara.clear()
-                    puntero_pantalla.ocultar()
 
                 elif gesto_principal == APUNTANDO:
                     zoom.reiniciar()
+                    # Mueve el cursor real de Windows segun el desplazamiento del
+                    # dedo; la estela y la diana son la referencia en la camara.
                     pos = puntero.actualizar(pts_principal[INDICE_TIP], ancho, alto)
-                    # La estela se dibuja en dos sitios: sobre el escritorio
-                    # (ventana superpuesta) y sobre la vista de camara.
                     estela_camara.append(pts_principal[INDICE_TIP])
                     dibujar_estela(frame, estela_camara, COLORES[APUNTANDO])
                     dibujar_puntero(frame, pts_principal[INDICE_TIP],
                                     COLORES[APUNTANDO])
-                    puntero_pantalla.mostrar(*pos, COLOR_PUNTERO_APUNTAR)
-                    lineas.append((f"Puntero: {pos[0]}, {pos[1]}",
+                    lineas.append((f"Cursor: {pos[0]}, {pos[1]}",
                                    COLORES[APUNTANDO]))
 
                 elif direccion_zoom != 0:
-                    # Al soltar el gesto de apuntar, el puntero se queda donde
-                    # este (embrague); solo se oculta el dibujo.
+                    # Al soltar el gesto de apuntar, el cursor se queda donde
+                    # este (embrague).
                     puntero.reiniciar()
                     estela_camara.clear()
-                    puntero_pantalla.ocultar()
 
                     # El zoom va a la ventana en primer plano: si esa ventana es
                     # la de la camara, no tiene sentido enviarlo.
@@ -693,7 +677,6 @@ def main() -> None:
                     puntero.reiniciar()
                     zoom.reiniciar()
                     estela_camara.clear()
-                    puntero_pantalla.ocultar()
 
                 # --- FPS (media exponencial para que no baile) -------------- #
                 ahora = time.perf_counter()
@@ -722,14 +705,12 @@ def main() -> None:
                     control = not control
                     puntero.reiniciar()
                     zoom.reiniciar()
-                    puntero_pantalla.ocultar()
                 if tecla == ord("f"):
                     mostrar_panel = not mostrar_panel
                 if tecla == ord("s"):
                     suavizar = not suavizar
     finally:
         entrada.soltar_todo()     # nunca dejar Ctrl pulsado al salir
-        puntero_pantalla.cerrar()
         cap.release()
         cv2.destroyAllWindows()
 
