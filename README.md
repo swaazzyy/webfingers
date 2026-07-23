@@ -1,14 +1,14 @@
 # Detector de gestos de mano (MediaPipe + OpenCV)
 
-Detección en tiempo real desde la webcam, con esqueleto de mano superpuesto,
-**puntero propio dibujado sobre el escritorio** y **zoom de la ventana activa**.
-Todo se maneja con las manos: el ratón no se toca en ningún momento.
+Detección en tiempo real desde la webcam, con esqueleto de mano superpuesto.
+El dedo **mueve el cursor real de Windows** (air-mouse relativo) y abrir/cerrar
+la mano **hace zoom en la ventana activa**. Todo se maneja con las manos.
 
 ## Gestos
 
 | Gesto | Patrón de dedos | Qué hace |
 |---|---|---|
-| `APUNTANDO` | solo el índice | **mueve el puntero** por el escritorio (relativo, tipo trackpad) |
+| `APUNTANDO` | solo el índice | **mueve el cursor** de Windows (relativo, tipo trackpad) |
 | `MANO ABIERTA` | los cinco dedos extendidos | **acercar** (zoom in) de forma sostenida |
 | `PUNO` | ningún dedo extendido | **alejar** (zoom out) de forma sostenida |
 | `PULGAR ARRIBA` | solo el pulgar hacia arriba | mantenerlo 1,2 s **activa o desactiva** el control |
@@ -19,8 +19,7 @@ Cuando la mano no encaja en ninguno se muestra `---`.
 ## Archivos
 
 - [gestos_manos.py](gestos_manos.py) — detección, clasificación y bucle principal
-- [puntero_pantalla.py](puntero_pantalla.py) — el puntero superpuesto
-- [control_windows.py](control_windows.py) — envío del atajo de zoom a Windows
+- [control_windows.py](control_windows.py) — movimiento del cursor y zoom (SendInput)
 
 ## Instalación
 
@@ -38,11 +37,10 @@ Doble clic en **`iniciar.bat`**, o desde la terminal:
 .venv\Scripts\python.exe gestos_manos.py
 ```
 
-Para ver la estela: con el control activado (arranca en ON), haz el gesto de
-**apuntar** (solo el índice) y mueve la mano. El rastro del dedo se dibuja en dos
-sitios a la vez: sobre el escritorio (la capa transparente que va encima de todo)
-y sobre la propia imagen de la cámara. Se apaga y se estrecha hacia atrás; su
-longitud se ajusta con `LARGO_ESTELA`.
+Con el control activado (arranca en ON), haz el gesto de **apuntar** (solo el
+índice) y mueve la mano: el **cursor de Windows** se desplaza. Sobre la imagen
+de la cámara verás la diana y una estela del dedo como referencia; su longitud
+se ajusta con `LARGO_ESTELA`.
 
 Teclas de respaldo (solo funcionan si la ventana de la cámara tiene el foco):
 `q`/`ESC` salir, `c` activar o desactivar el control, `f` panel de FPS,
@@ -90,12 +88,17 @@ modelo `hand_landmarker.task` se copia junto al `.exe` porque PyInstaller lo
 metería en `_internal`, donde el programa no lo busca. Si aun así faltara, se
 descarga solo en el primer arranque.
 
-## El puntero (relativo, tipo trackpad)
+## El puntero: air-mouse relativo (mueve el cursor real)
 
-Con el gesto de **apuntar** (solo el índice), el puntero se mueve según *cuánto*
-desplaces la mano, no según dónde la pongas — igual que un ratón o un trackpad.
-Si bajas la mano y vuelves a apuntar, el puntero **continúa donde estaba**: es el
-efecto de "levantar el ratón para recolocarlo" (embrague). Por eso no hay ningún
+Con el gesto de **apuntar** (solo el índice), el **cursor real de Windows** se
+mueve según *cuánto* desplaces la mano, no según dónde la pongas — igual que un
+ratón o un trackpad. Funciona en cualquier programa: señalar, pasar por encima,
+recorrer menús. (De momento solo mueve el cursor; no hace clic — se puede añadir
+si lo necesitas.)
+
+Si bajas la mano y vuelves a apuntar, el cursor **continúa donde estaba**: al
+retomar el gesto el programa se re-ancla a la posición real del cursor, así que
+es el efecto de "levantar el ratón para recolocarlo" (embrague). No hay ningún
 recuadro que mapear: mueves, sueltas, recolocas, sigues.
 
 Lleva una **aceleración** como la del ratón de Windows: los movimientos lentos
@@ -103,10 +106,15 @@ avanzan poco (control fino) y los rápidos avanzan mucho (llegas de un lado a ot
 de la pantalla sin recorrer todo el encuadre). Se ajusta con `GANANCIA_PUNTERO`
 (velocidad base) y `ACELERACION` (empuje extra en gestos rápidos).
 
-El puntero se dibuja en una ventana tkinter que cubre todo el escritorio, sin
-bordes, siempre encima y con los estilos `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`:
-**los clics la atraviesan**, nunca roba el foco y el cursor real de Windows se
-queda donde lo dejaste. Solo se ve el dibujo (anillo + cruz + punto) y la estela.
+El movimiento se inyecta con `SendInput` en coordenadas absolutas del escritorio
+virtual, así que funciona bien con varios monitores y con escalado de pantalla
+(el proceso se declara *DPI-aware*). Sobre la imagen de la cámara se dibujan la
+diana y la estela como referencia.
+
+> **Nota:** una versión anterior dibujaba un puntero propio en una ventana
+> transparente que cubría todo el escritorio. Daba problemas (se veía como una
+> capa opaca que "apagaba" la pantalla), así que se eliminó por completo: ahora
+> se mueve directamente el cursor del sistema.
 
 ## El zoom (abrir / cerrar la mano)
 
@@ -170,18 +178,20 @@ Con pruebas automáticas, sin cámara:
 - Construcción del `HandLandmarker` y `detect_for_video` con el modelo real
   (también empaquetado en el `.exe`, vía `--selftest`).
 - Los gestos con landmarks sintéticos (apuntar reconoce índice solo y forma "L").
-- Puntero relativo: arranca centrado, la mano lo empuja en la dirección correcta,
-  el embrague no salta al recolocar, la zona muerta ignora el temblor y nunca se
-  sale del escritorio virtual (incluido un segundo monitor con coordenadas
-  negativas).
+- Air-mouse relativo: arranca anclado al cursor real, la mano lo empuja en la
+  dirección correcta, el embrague no salta al recolocar, la zona muerta ignora el
+  temblor y nunca se sale del escritorio virtual (incluido un segundo monitor con
+  coordenadas negativas).
 - Zoom por abrir/cerrar la mano: primer clic inmediato, cadencia mientras se
   mantiene, inversión instantánea palma↔puño y corte al soltar.
 - `AccionSostenida`: progreso, disparo único y rearme tras soltar.
-- La ventana del puntero: estilos correctos, cubre el escritorio desde el origen
-  correcto, no roba el foco y `WindowFromPoint` confirma que los clics la
-  atraviesan.
-- `sizeof(INPUT)` y una llamada real a `SendInput` (soltar Ctrl, sin efecto
-  visible).
+- **Movimiento real del cursor**: `mover_cursor` coloca el cursor de Windows en
+  el punto pedido (llamada real a `SendInput`, verificada con `GetCursorPos` y
+  devolviendo luego el cursor a su sitio).
+- El dispatch del bucle: apuntar mueve el cursor, mano abierta/puño hacen zoom,
+  y con el control apagado no se mueve nada.
+- `sizeof(INPUT)` correcto en 64 bits.
 
-38 comprobaciones en verde. Sin probar: la webcam en vivo y el efecto real del
-zoom sobre una aplicación concreta. Eso hay que ejecutarlo delante de la cámara.
+Sin cámara, 30 + 8 comprobaciones en verde. Sin probar: la webcam en vivo y el
+efecto real del zoom sobre una aplicación concreta. Eso hay que ejecutarlo
+delante de la cámara.
