@@ -23,7 +23,10 @@
       "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import matplotlib; print\\('matplotlib', matplotlib.__version__\\)\")",
       "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import ast; ast.parse\\(open\\(r'D:\\\\automatization-signs\\\\gestos_manos.py',encoding='utf-8'\\).read\\(\\)\\); print\\('sintaxis OK'\\)\")",
       "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,r'D:\\\\automatization-signs'\\); import gestos_manos as g; print\\('import OK'\\); print\\('DIR_ZOOM', g.DIR_ZOOM\\)\")",
-      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_dispatch.py\" 2>$null)"
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_dispatch.py\" 2>$null)",
+      "Bash(git reset *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)"
     ]
   }
 }
