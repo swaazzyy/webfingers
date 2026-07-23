@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(py --version; \\(Get-Command py, python3, python -ErrorAction SilentlyContinue | Select-Object Name, Source\\))",
+      "PowerShell(py -0p)",
+      "PowerShell(py -c \"import cv2, mediapipe; print\\('ok'\\)\")",
+      "PowerShell(py -3.13 -m pip install --dry-run --quiet mediapipe opencv-python 2>&1)",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_gestos.py\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import mediapipe as mp; print\\([a for a in dir\\(mp\\) if not a.startswith\\('_'\\)]\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"from mediapipe import solutions; print\\('solutions import ok', [a for a in dir\\(solutions\\) if not a.startswith\\('_'\\)]\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"from mediapipe.tasks.python import vision, BaseOptions; print\\([a for a in dir\\(vision\\) if 'Hand' in a or 'Running' in a]\\); import inspect; print\\(inspect.signature\\(vision.HandLandmarkerOptions.__init__\\)\\); print\\([a for a in dir\\(vision.RunningMode\\) if not a.startswith\\('_'\\)]\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"from mediapipe.tasks.python import vision; c=vision.HandLandmarksConnections; print\\([a for a in dir\\(c\\) if not a.startswith\\('_'\\)][:20]\\); print\\(type\\(c.HAND_CONNECTIONS\\), len\\(c.HAND_CONNECTIONS\\), c.HAND_CONNECTIONS[0]\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0, r'D:\\\\automatization-signs'\\); import gestos_manos as g; p = g.asegurar_modelo\\(\\); print\\('modelo:', p, p.stat\\(\\).st_size, 'bytes'\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_e2e.py\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_e2e.py\" 2>$null)",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_control.py\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -m pip install --quiet pyinstaller)",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import pyinstaller_hooks_contrib, PyInstaller; print\\('pyinstaller', PyInstaller.__version__\\); import mediapipe, os; print\\('mediapipe dir:', os.path.dirname\\(mediapipe.__file__\\)\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -m pip install --quiet pyinstaller pyinstaller-hooks-contrib)",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import PyInstaller; print\\('pyinstaller', PyInstaller.__version__\\); import mediapipe, os; print\\('mediapipe dir:', os.path.dirname\\(mediapipe.__file__\\)\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\pyinstaller.exe --noconfirm --clean D:\\\\automatization-signs\\\\gestos_manos.spec --distpath D:\\\\automatization-signs\\\\dist --workpath D:\\\\automatization-signs\\\\build 2>&1)",
+      "PowerShell(& \"D:\\\\automatization-signs\\\\dist\\\\GestosManos\\\\GestosManos.exe\" --selftest 2>&1 | Select-Object -Last 15; \"EXIT: $LASTEXITCODE\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import matplotlib; print\\('matplotlib', matplotlib.__version__\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import ast; ast.parse\\(open\\(r'D:\\\\automatization-signs\\\\gestos_manos.py',encoding='utf-8'\\).read\\(\\)\\); print\\('sintaxis OK'\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,r'D:\\\\automatization-signs'\\); import gestos_manos as g; print\\('import OK'\\); print\\('DIR_ZOOM', g.DIR_ZOOM\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_dispatch.py\" 2>$null)"
+    ]
+  }
+}

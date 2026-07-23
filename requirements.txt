@@ -1,0 +1,3 @@
+# Verificado con Python 3.13 en Windows 11: opencv-python 5.0.0 + mediapipe 0.10.35
+opencv-python>=4.8
+mediapipe>=0.10.14
