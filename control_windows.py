@@ -3,9 +3,11 @@ Capa de Windows: metricas del escritorio, movimiento del cursor y zoom de la
 ventana en primer plano.
 
 - El cursor real se mueve con SendInput (movimiento absoluto sobre el escritorio
-  virtual). No se envian clics: solo se desplaza la flecha del raton.
-- El zoom se inyecta como Ctrl + '+' / Ctrl + '-', que van a la ventana que
-  tengas seleccionada y son el atajo de zoom mas universal de Windows.
+  virtual) y se pulsan sus botones.
+- El zoom usa la LUPA DE WINDOWS (Win + '+' / Win + '-'), que amplia toda la
+  pantalla: funciona en cualquier aplicacion, en el escritorio y en los menus,
+  sin depender de que la app soporte zoom ni de que ventana este seleccionada.
+  Win + Esc la cierra.
 
 Se usa `SendInput` (user32) via ctypes, sin dependencias extra.
 
@@ -33,7 +35,8 @@ MOUSEEVENTF_VIRTUALDESK = 0x4000          # coordenadas sobre todos los monitore
 MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
 MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP = 0x0008, 0x0010
 
-VK_CONTROL = 0x11
+VK_LWIN = 0x5B                            # tecla Windows: abre/controla la lupa
+VK_ESCAPE = 0x1B
 VK_OEM_PLUS, VK_OEM_MINUS = 0xBB, 0xBD    # teclas +/- de la fila principal
 VK_ADD, VK_SUBTRACT = 0x6B, 0x6D          # teclado numerico (alternativa)
 
@@ -99,6 +102,7 @@ class EntradaWindows:
         self._cursor_sim: tuple[int, int] | None = None   # cursor falso en simular
         self.izq_pulsado = False          # estado de los botones, para poder
         self.der_pulsado = False          # soltarlos siempre al terminar
+        self.lupa_abierta = False         # para poder cerrarla nosotros al salir
         if not simular:
             habilitar_dpi()
         # Origen y tamano del escritorio virtual (soporta varios monitores)
@@ -191,38 +195,53 @@ class EntradaWindows:
 
     # -- acciones publicas -------------------------------------------------- #
 
-    def titulo_ventana_activa(self) -> str:
-        """Titulo de la ventana en primer plano (solo para mostrarlo en el HUD)."""
-        hwnd = _user32.GetForegroundWindow()
-        if not hwnd:
-            return ""
-        n = _user32.GetWindowTextLengthW(hwnd)
-        buffer = ctypes.create_unicode_buffer(n + 1)
-        _user32.GetWindowTextW(hwnd, buffer, n + 1)
-        return buffer.value
+    def _con_windows(self, vk: int, veces: int = 1) -> None:
+        """Pulsa Win + <tecla>. Siempre se suelta Win, pase lo que pase.
+
+        Se pulsa otra tecla entre el Win-abajo y el Win-arriba a proposito: si
+        Win se pulsara y soltara sola, Windows abriria el menu Inicio.
+        """
+        self._enviar(self._tecla(VK_LWIN))
+        try:
+            for _ in range(veces):
+                self._enviar(self._tecla(vk), self._tecla(vk, soltar=True))
+        finally:
+            self._enviar(self._tecla(VK_LWIN, soltar=True))
 
     def zoom(self, clics: int) -> None:
-        """Ctrl + '+' / Ctrl + '-' sobre la ventana seleccionada.
+        """Lupa de Windows: Win + '+' acerca, Win + '-' aleja.
 
-        `clics` positivo = acercar, negativo = alejar.
+        Amplia toda la pantalla, asi que da igual que ventana este en primer
+        plano. `clics` positivo = acercar, negativo = alejar.
         """
         if clics == 0:
             return
+        if clics > 0:
+            self.lupa_abierta = True      # Win + '+' la abre si estaba cerrada
         if self.simular:
-            print(f"[sim] zoom {clics:+d} clic(s)")
+            print(f"[sim] lupa {clics:+d}")
             return
+        self._con_windows(self.vk_mas if clics > 0 else self.vk_menos, abs(clics))
 
-        vk = self.vk_mas if clics > 0 else self.vk_menos
-        # try/finally: pase lo que pase, Ctrl nunca se queda pulsado.
-        self._enviar(self._tecla(VK_CONTROL))
+    def cerrar_lupa(self) -> None:
+        """Win + Esc: cierra la lupa y devuelve la pantalla a su tamano normal.
+
+        Solo se envia si fuimos nosotros quienes la abrimos, para no cerrarla si
+        el usuario ya la estaba usando por su cuenta.
+        """
+        if not self.lupa_abierta:
+            return
+        self.lupa_abierta = False
+        if self.simular:
+            print("[sim] cerrar lupa")
+            return
         try:
-            for _ in range(abs(clics)):
-                self._enviar(self._tecla(vk), self._tecla(vk, soltar=True))
-        finally:
-            self._enviar(self._tecla(VK_CONTROL, soltar=True))
+            self._con_windows(VK_ESCAPE)
+        except OSError:
+            pass
 
     def soltar_todo(self) -> None:
-        """Red de seguridad: suelta Ctrl y los botones del raton.
+        """Red de seguridad: suelta los botones del raton y la tecla Windows.
 
         Dejar un boton hundido bloquearia el equipo (todo seria un arrastre
         infinito), asi que esto se llama siempre al salir, pase lo que pase.
@@ -236,6 +255,6 @@ class EntradaWindows:
             print("[sim] soltar_todo")
             return
         try:
-            self._enviar(self._tecla(VK_CONTROL, soltar=True))
+            self._enviar(self._tecla(VK_LWIN, soltar=True))
         except OSError:
             pass

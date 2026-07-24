@@ -35,7 +35,10 @@
       "Bash(git checkout *)",
       "Bash(git fetch *)",
       "Bash(git push *)",
-      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_clics.py\" 2>$null)"
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\rod\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--automatization-signs\\\\fd62ce10-c4fa-473d-919a-4e76b51abfa6\\\\scratchpad\\\\test_clics.py\" 2>$null)",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import ast; [ast.parse\\(open\\(f,encoding='utf-8'\\).read\\(\\)\\) for f in [r'D:\\\\automatization-signs\\\\gestos_manos.py',r'D:\\\\automatization-signs\\\\control_windows.py']]; print\\('sintaxis OK'\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,r'D:\\\\automatization-signs'\\); import gestos_manos as g; print\\('import OK'\\); print\\('gestos:', sorted\\(set\\(g.PATRONES.values\\(\\)\\)\\)\\)\")",
+      "PowerShell(D:\\\\automatization-signs\\\\.venv\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,r'D:\\\\automatization-signs'\\); import gestos_manos as g; print\\('import OK'\\); [print\\(' ',k,'->',v\\) for k,v in g.PATRONES.items\\(\\)]\")"
     ]
   }
 }

@@ -4,27 +4,32 @@ Detector de gestos de mano en tiempo real (MediaPipe Tasks + OpenCV).
 Todo se maneja con las manos; las teclas son solo un respaldo. Se mueve el
 cursor real de Windows y se hacen clics con el.
 
-Gestos:
-    - Apuntando (solo indice)
-        mueve el CURSOR REAL de Windows de forma RELATIVA, como un trackpad:
-        la mano lo empuja segun cuanto se mueva; al bajar la mano y volver a
-        apuntar, continua desde donde se quedo (embrague)
-    - Pinza (juntar pulgar e indice) -> CLIC IZQUIERDO
-        una pinza corta es un clic; si la mantienes y mueves la mano, ARRASTRAS
-    - Indice y medio estirados y JUNTOS -> CLIC DERECHO
-        (separados es la paz, que sale del programa)
-    - Mano abierta -> ACERCAR (zoom in) de forma sostenida
-    - Puno         -> ALEJAR  (zoom out) de forma sostenida
-        el zoom se envia como Ctrl + '+' / Ctrl + '-' a la ventana seleccionada
-    - Pulgar arriba -> mantenido 1,2 s: activa / desactiva el control
-    - Paz           -> mantenido 2 s: salir del programa
+Los gestos se distinguen por el NUMERO de dedos estirados, que es mucho mas
+facil de hacer y de detectar que medir distancias entre puntas:
+
+    1 dedo  (indice)             -> mueve el CURSOR REAL de Windows, de forma
+                                    relativa (como un trackpad)
+    2 dedos (indice + medio)     -> CLIC IZQUIERDO; mantenlos y mueve la mano
+                                    para ARRASTRAR
+    pulgar arriba                -> CLIC DERECHO
+    5 dedos (mano abierta)       -> ACERCAR con la lupa de Windows, sostenido
+    0 dedos (puno)               -> ALEJAR  con la lupa de Windows, sostenido
+    pulgar + menique ("llamame") -> mantenido 1,2 s: activa/desactiva el control
+
+Ningun gesto usa el anular ni obliga a mover el menique por separado, que son
+los dedos mas dificiles de controlar de forma aislada.
+
+El zoom es la LUPA DE WINDOWS: amplia toda la pantalla, asi que funciona en
+cualquier aplicacion y da igual que ventana este en primer plano.
+
+En pantalla NO se escribe ninguna indicacion: solo se dibuja el esqueleto de la
+mano y la diana del puntero. La chuleta de gestos esta en el README.
 
 Uso:
     python gestos_manos.py
 
-Teclas (respaldo, requieren que la ventana de la camara tenga el foco):
-    q / ESC -> salir          c -> activar/desactivar el control
-    f       -> panel de FPS   s -> suavizado temporal del gesto
+Salir: tecla q / ESC, o cerrar la ventana con la X.
+Tecla c: activa/desactiva el control (respaldo del gesto).
 
 La primera ejecucion descarga el modelo `hand_landmarker.task` (~7 MB) desde
 el repositorio oficial de MediaPipe y lo deja junto a este script.
@@ -85,9 +90,8 @@ CONTROL_ACTIVO = True      # estado inicial del puntero y el zoom
 SIMULAR_ENTRADA = False    # True = solo imprime las acciones, no toca el sistema
 ZOOM_NUMERICO = False      # True = usar el +/- del teclado numerico
 
-# Gestos mantenidos para las acciones globales:
-ESPERA_CONTROL = 1.2       # segundos de PULGAR ARRIBA para activar/desactivar
-ESPERA_SALIR = 2.0         # segundos de PAZ para salir
+# Gesto mantenido para activar/desactivar el control (pulgar + menique):
+ESPERA_CONTROL = 1.2       # segundos
 
 # --- Puntero relativo (tipo raton / trackpad) ------------------------------ #
 # El puntero se desplaza segun cuanto muevas la mano, no segun donde este; al
@@ -100,21 +104,22 @@ SUAVIZADO_DEDO = 0.5       # EMA de la punta antes de medir el desplazamiento
 ZONA_MUERTA = 0.6          # px del dedo por debajo de los cuales no se mueve nada
 
 # --- Clics ------------------------------------------------------------------ #
-# Clic izquierdo: juntar pulgar e indice (pinza). Mantener la pinza y mover la
-# mano arrastra. Clic derecho: indice y medio estirados y JUNTOS (la paz, que
-# sale del programa, exige tenerlos separados).
-UMBRAL_PINZA = 0.30        # separacion pulgar-indice (en palmas) para cerrar
-MIN_INDICE_ESTIRADO = 0.55 # punta-nudillo del indice: distingue pinza de puno
-ESTABILIDAD_CLIC_DER = 0.20  # s que hay que mantener el gesto de clic derecho
+# Los clics se distinguen por el NUMERO de dedos estirados, no por distancias
+# finas entre puntas: es mucho mas facil de hacer y de detectar.
+#   2 dedos (indice + medio)          -> clic izquierdo / arrastrar
+#   3 dedos (indice + medio + anular) -> clic derecho
+ESTABILIDAD_CLIC_DER = 0.15  # s que hay que mantener los 3 dedos
 UMBRAL_ARRASTRE = 16.0     # px de pantalla antes de pasar de clic a arrastre
 
 LARGO_ESTELA = 26          # posiciones que deja el rastro del dedo (0 = sin estela)
 GROSOR_ESTELA = 7          # grosor del trazo en la punta
 
-# --- Zoom por abrir / cerrar la mano --------------------------------------- #
-# Mano abierta = acercar, puno = alejar. Mientras mantengas el gesto se van
-# enviando clics de Ctrl + '+' / '-' a la ventana seleccionada a este ritmo.
-ZOOM_INTERVALO = 0.30      # segundos entre clics de zoom mientras se mantiene
+# --- Zoom con la LUPA DE WINDOWS ------------------------------------------- #
+# Mano abierta = acercar, puno = alejar. Se envia Win + '+' / Win + '-', que
+# amplia TODA la pantalla: funciona en cualquier app, en el escritorio y en los
+# menus, sin importar que ventana este seleccionada.
+ZOOM_INTERVALO = 0.30      # segundos entre pasos de zoom mientras se mantiene
+CERRAR_LUPA_AL_SALIR = True  # al cerrar el programa, devolver la pantalla a 100 %
 
 # Modelo: variante float16 (rapida). Para mas precision usar la ruta ".../full/..."
 MODELO = carpeta_base() / "hand_landmarker.task"
@@ -126,36 +131,47 @@ URL_MODELO = (
 # Umbrales de la heuristica (normalizados por el tamano de la mano)
 ANG_DEDO_EXTENDIDO = 155.0  # grados en la articulacion PIP
 ANG_PULGAR_RECTO = 150.0    # grados en la articulacion IP del pulgar
-SEP_MIN_PAZ = 0.35          # separacion minima entre puntas indice-medio
 ALTURA_MIN_PULGAR = 0.35    # cuanto debe subir el pulgar sobre la muneca
 
 # --------------------------------------------------------------------------- #
 # Etiquetas de gesto y colores
 # --------------------------------------------------------------------------- #
 
-PUNO = "PUNO"
-MANO_ABIERTA = "MANO ABIERTA"
-PAZ = "PAZ"
-PULGAR_ARRIBA = "PULGAR ARRIBA"
-APUNTANDO = "APUNTANDO"
-PINZA = "CLIC IZQ"          # pulgar e indice juntos: pulsa / arrastra
-CLIC_DERECHO = "CLIC DER"   # indice y medio estirados y juntos
+PUNO = "PUNO"               # 0 dedos: alejar
+MANO_ABIERTA = "MANO ABIERTA"   # 5 dedos: acercar
+APUNTANDO = "APUNTANDO"     # 1 dedo:  mueve el cursor
+CLIC_IZQ = "CLIC IZQ"       # 2 dedos: pulsa / arrastra
+CLIC_DER = "CLIC DER"       # pulgar arriba
+ALTERNAR = "ON/OFF"         # pulgar + menique: activa/desactiva el control
 DESCONOCIDO = "---"
+
+# Patron de dedos (pulgar, indice, medio, anular, menique) -> gesto.
+# El pulgar es indiferente al apuntar y al hacer clic, asi que cada uno aparece
+# con el pulgar recogido y estirado. No hay ningun gesto que use el anular ni
+# obligue a controlar el menique por separado: son los mas incomodos de hacer.
+PATRONES = {
+    (0, 1, 0, 0, 0): APUNTANDO,
+    (1, 1, 0, 0, 0): APUNTANDO,      # tambien la forma de "L"
+    (0, 1, 1, 0, 0): CLIC_IZQ,
+    (1, 1, 1, 0, 0): CLIC_IZQ,
+    (1, 1, 1, 1, 1): MANO_ABIERTA,
+    (0, 0, 0, 0, 0): PUNO,
+    (1, 0, 0, 0, 1): ALTERNAR,       # "llamame"
+}
 
 # Mano abierta = acercar, puno = alejar (usado por el control de zoom)
 DIR_ZOOM = {MANO_ABIERTA: +1, PUNO: -1}
 
-# Gestos que gobiernan el cursor (mueven o hacen clic)
-GESTOS_PUNTERO = (APUNTANDO, PINZA)
+# Gestos que gobiernan el cursor (lo mueven o hacen clic con el)
+GESTOS_PUNTERO = (APUNTANDO, CLIC_IZQ)
 
-COLORES = {                 # BGR, para dibujar sobre el frame de OpenCV
+COLORES = {                 # BGR, para dibujar el esqueleto y el puntero
     PUNO: (60, 60, 235),
     MANO_ABIERTA: (60, 200, 60),
-    PAZ: (235, 180, 40),
-    PULGAR_ARRIBA: (40, 200, 235),
     APUNTANDO: (220, 90, 220),
-    PINZA: (255, 255, 90),
-    CLIC_DERECHO: (120, 160, 255),
+    CLIC_IZQ: (255, 255, 90),
+    CLIC_DER: (120, 160, 255),
+    ALTERNAR: (235, 180, 40),
     DESCONOCIDO: (170, 170, 170),
 }
 
@@ -252,54 +268,25 @@ def dedos_extendidos(pts: list[tuple[float, float]]) -> tuple[bool, ...]:
     return tuple(estados)
 
 
-def es_pinza(pts: list[tuple[float, float]]) -> bool:
-    """Pulgar e indice juntos con el indice aun estirado hacia fuera.
-
-    La segunda condicion es la que distingue la pinza de un puno: al cerrar la
-    mano el pulgar tambien acaba cerca de la punta del indice, pero entonces esa
-    punta queda recogida contra la palma.
-    """
-    escala = escala_mano(pts)
-    if distancia(pts[PULGAR_TIP], pts[INDICE_TIP]) / escala > UMBRAL_PINZA:
-        return False
-    return distancia(pts[INDICE_TIP], pts[INDICE_MCP]) / escala > MIN_INDICE_ESTIRADO
-
-
 def clasificar_gesto(dedos: tuple[bool, ...],
                      pts: list[tuple[float, float]]) -> str:
-    """Traduce el patron de dedos extendidos a un nombre de gesto."""
-    pulgar, indice, medio, anular, menique = dedos
-    escala = escala_mano(pts)
+    """Traduce el patron de dedos estirados a un nombre de gesto.
 
-    # La pinza va ANTES que el puno: al juntar pulgar e indice el dedo se dobla
-    # y la comprobacion angular lo leeria como mano cerrada, que hace zoom out.
-    if not (medio or anular or menique) and es_pinza(pts):
-        return PINZA
+    Es una simple consulta a `PATRONES`: cada gesto es un numero de dedos
+    distinto, sin umbrales de distancia entre puntas. El unico caso especial es
+    el pulgar arriba, que ademas tiene que apuntar hacia arriba de verdad.
+    """
+    patron = tuple(int(d) for d in dedos)
 
-    if not any(dedos):
-        return PUNO
+    if patron == (1, 0, 0, 0, 0):
+        # Pulgar arriba = clic derecho, pero solo si apunta hacia arriba de
+        # verdad: un puno con el pulgar asomando de lado no debe hacer clic.
+        # En imagen la Y crece hacia abajo, de ahi la comparacion invertida.
+        arriba = (pts[PULGAR_TIP][1]
+                  < pts[MUNECA][1] - ALTURA_MIN_PULGAR * escala_mano(pts))
+        return CLIC_DER if arriba else DESCONOCIDO
 
-    if all(dedos):
-        return MANO_ABIERTA
-
-    # Indice y medio estirados: separados = paz (salir), juntos = clic derecho.
-    if indice and medio and not anular and not menique:
-        separacion = distancia(pts[INDICE_TIP], pts[MEDIO_TIP]) / escala
-        return PAZ if separacion > SEP_MIN_PAZ else CLIC_DERECHO
-
-    # Pulgar arriba: solo el pulgar extendido y apuntando hacia arriba.
-    # En imagen la Y crece hacia abajo, de ahi la comparacion invertida.
-    if pulgar and not (indice or medio or anular or menique):
-        if pts[PULGAR_TIP][1] < pts[MUNECA][1] - ALTURA_MIN_PULGAR * escala:
-            return PULGAR_ARRIBA
-        return DESCONOCIDO
-
-    # Apuntar: solo el indice entre los dedos largos (el pulgar es indiferente,
-    # asi funciona tanto con el indice solo como en forma de "L").
-    if indice and not (medio or anular or menique):
-        return APUNTANDO
-
-    return DESCONOCIDO
+    return PATRONES.get(patron, DESCONOCIDO)
 
 
 class SuavizadorGesto:
@@ -409,22 +396,22 @@ class ControlPuntero:
 class ControlClics:
     """Botones del raton a partir del gesto de la mano.
 
-    - Pinza (pulgar + indice): mantiene pulsado el boton izquierdo. Una pinza
-      corta es un clic; si mantienes y mueves la mano, arrastras.
+    - Dos dedos (indice + medio): mantiene pulsado el boton izquierdo. Un toque
+      corto es un clic; si mantienes los dos dedos y mueves la mano, arrastras.
     - Mientras no te muevas lo suficiente el cursor se congela, para que el
-      propio gesto de juntar los dedos no desplace el punto donde pulsas.
+      propio gesto de estirar el dedo no desplace el punto donde pulsas.
     """
 
     def __init__(self, entrada: EntradaWindows) -> None:
         self.entrada = entrada
-        self._ancla: tuple[float, float] | None = None   # dedo al iniciar la pinza
+        self._ancla: tuple[float, float] | None = None   # dedo al iniciar el clic
         self.arrastrando = False
 
-    def actualizar_pinza(self, pinzando: bool,
-                         punta: tuple[float, float]) -> bool:
-        """Sincroniza el boton izquierdo con la pinza. Devuelve si hay arrastre."""
-        if pinzando:
-            if self._ancla is None:          # acaba de cerrarse: pulsar
+    def actualizar_izquierdo(self, pulsando: bool,
+                             punta: tuple[float, float]) -> bool:
+        """Sincroniza el boton izquierdo con el gesto. Devuelve si hay arrastre."""
+        if pulsando:
+            if self._ancla is None:          # acaba de empezar: pulsar
                 self._ancla = punta
                 self.arrastrando = False
                 self.entrada.boton(derecho=False, presionar=True)
@@ -521,57 +508,6 @@ def dibujar_estela(frame, puntos, color) -> None:
                  tono, grosor, cv2.LINE_AA)
 
 
-def dibujar_progreso(frame, texto: str, progreso: float, color) -> None:
-    """Barra inferior que muestra cuanto llevas manteniendo un gesto."""
-    alto, ancho = frame.shape[:2]
-    x0, x1 = ancho // 4, ancho - ancho // 4
-    y = alto - 46
-    cv2.rectangle(frame, (x0, y), (x1, y + 18), (40, 40, 40), -1)
-    cv2.rectangle(frame, (x0, y), (int(x0 + (x1 - x0) * progreso), y + 18),
-                  color, -1)
-    cv2.rectangle(frame, (x0, y), (x1, y + 18), (200, 200, 200), 1, cv2.LINE_AA)
-    cv2.putText(frame, texto, (x0, y - 8), cv2.FONT_HERSHEY_SIMPLEX,
-                0.6, color, 2, cv2.LINE_AA)
-
-
-def dibujar_panel(frame, lineas: list[tuple[str, tuple[int, int, int]]],
-                  x: int = 12, y: int = 12) -> None:
-    """Dibuja un recuadro semitransparente con varias lineas de texto."""
-    if not lineas:
-        return
-
-    alto_linea = 30
-    ancho_panel = 20 + max(
-        cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0][0]
-        for t, _ in lineas
-    )
-    alto_panel = 16 + alto_linea * len(lineas)
-
-    # addWeighted solo sobre la region del panel: mucho mas barato que
-    # componer el frame completo.
-    roi = frame[y:y + alto_panel, x:x + ancho_panel]
-    if roi.size:
-        oscuro = roi.copy()
-        oscuro[:] = (25, 25, 25)
-        cv2.addWeighted(oscuro, 0.55, roi, 0.45, 0, roi)
-
-    for i, (texto, color) in enumerate(lineas):
-        cv2.putText(frame, texto, (x + 10, y + 30 + i * alto_linea),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
-
-
-def etiqueta_en_mano(frame, pts, texto: str, color) -> None:
-    """Escribe el gesto justo encima de la mano detectada."""
-    x = int(min(p[0] for p in pts))
-    y = int(min(p[1] for p in pts)) - 12
-    x = max(5, min(x, frame.shape[1] - 260))
-    y = max(24, y)
-    cv2.putText(frame, texto, (x, y), cv2.FONT_HERSHEY_SIMPLEX,
-                0.8, (0, 0, 0), 4, cv2.LINE_AA)   # borde para legibilidad
-    cv2.putText(frame, texto, (x, y), cv2.FONT_HERSHEY_SIMPLEX,
-                0.8, color, 2, cv2.LINE_AA)
-
-
 # --------------------------------------------------------------------------- #
 # Inicializacion
 # --------------------------------------------------------------------------- #
@@ -630,18 +566,12 @@ def main() -> None:
     clics = ControlClics(entrada)
     estela_camara: deque[tuple[float, float]] = deque(maxlen=LARGO_ESTELA)
 
-    accion_control = AccionSostenida(PULGAR_ARRIBA, ESPERA_CONTROL)
-    accion_salir = AccionSostenida(PAZ, ESPERA_SALIR)
-    accion_clic_der = AccionSostenida(CLIC_DERECHO, ESTABILIDAD_CLIC_DER)
+    accion_control = AccionSostenida(ALTERNAR, ESPERA_CONTROL)
+    accion_clic_der = AccionSostenida(CLIC_DER, ESTABILIDAD_CLIC_DER)
 
     suavizadores = [SuavizadorGesto() for _ in range(MAX_MANOS)]
     control = CONTROL_ACTIVO
-    mostrar_panel = True
-    suavizar = True
-
-    fps = 0.0
-    t_previo = time.perf_counter()
-    t_inicio = t_previo
+    t_inicio = time.perf_counter()
 
     try:
         with crear_detector() as detector:
@@ -670,7 +600,8 @@ def main() -> None:
                 resultado = detector.detect_for_video(imagen, ts_ms)
 
                 # --- Dibujo y clasificacion -------------------------------- #
-                lineas = []
+                # Solo se dibuja el esqueleto: ninguna indicacion escrita en
+                # pantalla; los gestos estan documentados en el README.
                 gesto_principal = DESCONOCIDO
                 pts_principal = None            # landmarks de la primera mano
 
@@ -678,54 +609,27 @@ def main() -> None:
                     for i, landmarks in enumerate(resultado.hand_landmarks):
                         pts = a_pixeles(landmarks, ancho, alto)
                         gesto = clasificar_gesto(dedos_extendidos(pts), pts)
-                        if suavizar and i < len(suavizadores):
+                        if i < len(suavizadores):
                             gesto = suavizadores[i].actualizar(gesto)
                         if i == 0:
                             gesto_principal, pts_principal = gesto, pts
-
-                        color = COLORES[gesto]
-                        dibujar_esqueleto(frame, pts, color)
-                        etiqueta_en_mano(frame, pts, gesto, color)
-
-                        # Como la imagen esta en espejo, la etiqueta de MediaPipe
-                        # coincide con la mano real del usuario.
-                        lado = "?"
-                        if i < len(resultado.handedness):
-                            lado = ("Izq" if resultado.handedness[i][0].category_name
-                                    == "Left" else "Der")
-                        lineas.append((f"Mano {lado}: {gesto}", color))
+                        dibujar_esqueleto(frame, pts, COLORES[gesto])
                 else:
                     for s in suavizadores:
                         s.actualizar(DESCONOCIDO)
-                    lineas.append(("Sin manos detectadas", COLORES[DESCONOCIDO]))
 
-                # --- Gestos mantenidos: encender/apagar y salir ------------- #
-                disparo_control, prog_control = accion_control.actualizar(
-                    gesto_principal)
-                disparo_salir, prog_salir = accion_salir.actualizar(
-                    gesto_principal)
-
-                if disparo_control:
+                # --- Gesto mantenido: encender / apagar el control ---------- #
+                if accion_control.actualizar(gesto_principal)[0]:
                     control = not control
                     puntero.reiniciar()
                     zoom.reiniciar()
                     clics.soltar()
-                if disparo_salir:
-                    break
 
-                # Clic derecho: hay que mantener el gesto un instante, para que
-                # el paso fugaz por "dedos juntos" al hacer la paz no lo dispare.
-                disparo_der, prog_der = accion_clic_der.actualizar(gesto_principal)
-                if disparo_der and control:
+                # Clic derecho: hay que mantener el pulgar arriba un instante,
+                # para que el paso fugaz por esa forma al abrir o cerrar la
+                # mano no dispare un clic.
+                if accion_clic_der.actualizar(gesto_principal)[0] and control:
                     clics.clic_derecho()
-
-                if prog_control > 0:
-                    dibujar_progreso(
-                        frame,
-                        f"Pulgar: {'desactivar' if control else 'activar'} control",
-                        prog_control, COLORES[PULGAR_ARRIBA])
-                elif prog_salir > 0:
-                    dibujar_progreso(frame, "Paz: salir", prog_salir, COLORES[PAZ])
 
                 # --- Puntero (apuntar) y zoom (abrir/cerrar la mano) -------- #
                 direccion_zoom = DIR_ZOOM.get(gesto_principal, 0)
@@ -738,24 +642,19 @@ def main() -> None:
 
                 elif gesto_principal in GESTOS_PUNTERO:
                     zoom.reiniciar()
-                    pinzando = gesto_principal == PINZA
+                    pulsando = gesto_principal == CLIC_IZQ
                     punta = pts_principal[INDICE_TIP]
 
-                    # Con la pinza cerrada el cursor se congela (clic limpio)
+                    # Con el boton pulsado el cursor se congela (clic limpio)
                     # hasta que muevas lo suficiente: entonces pasa a arrastrar.
-                    arrastrando = clics.actualizar_pinza(pinzando, punta)
+                    arrastrando = clics.actualizar_izquierdo(pulsando, punta)
                     pos = puntero.actualizar(punta, ancho, alto,
-                                             mover=not pinzando or arrastrando)
+                                             mover=not pulsando or arrastrando)
 
                     color = COLORES[gesto_principal]
                     estela_camara.append(punta)
                     dibujar_estela(frame, estela_camara, color)
                     dibujar_puntero(frame, punta, color)
-                    if pinzando:
-                        estado = "ARRASTRANDO" if arrastrando else "CLIC IZQ"
-                        lineas.append((f"{estado}  {pos[0]}, {pos[1]}", color))
-                    else:
-                        lineas.append((f"Cursor: {pos[0]}, {pos[1]}", color))
 
                 elif direccion_zoom != 0:
                     # Al soltar el gesto de apuntar, el cursor se queda donde
@@ -764,64 +663,33 @@ def main() -> None:
                     clics.soltar()
                     estela_camara.clear()
 
-                    # El zoom va a la ventana en primer plano: si esa ventana es
-                    # la de la camara, no tiene sentido enviarlo.
-                    objetivo = entrada.titulo_ventana_activa()
-                    propia = objetivo == NOMBRE_VENTANA
-                    zoom.actualizar(direccion_zoom, aplicar=not propia)
-                    accion = "ACERCAR" if direccion_zoom > 0 else "ALEJAR"
-                    if propia:
-                        lineas.append(("Selecciona la ventana a ampliar",
-                                       (60, 200, 235)))
-                    else:
-                        lineas.append(
-                            (f"Zoom {accion} (x{zoom.acumulado:+d}) -> "
-                             f"{objetivo[:22] or '?'}", COLORES[MANO_ABIERTA]))
+                    # La lupa amplia toda la pantalla, asi que no hay que
+                    # comprobar que ventana esta en primer plano.
+                    zoom.actualizar(direccion_zoom)
                 else:
                     puntero.reiniciar()
                     zoom.reiniciar()
                     clics.soltar()
                     estela_camara.clear()
-                    if prog_der > 0:        # aviso mientras se arma el clic der.
-                        dibujar_progreso(frame, "Clic derecho", prog_der,
-                                         COLORES[CLIC_DERECHO])
-
-                # --- FPS (media exponencial para que no baile) -------------- #
-                ahora = time.perf_counter()
-                dt = ahora - t_previo
-                t_previo = ahora
-                if dt > 0:
-                    fps = 0.9 * fps + 0.1 * (1.0 / dt) if fps else 1.0 / dt
-
-                if mostrar_panel:
-                    lineas.append(
-                        (f"Control: {'ON' if control else 'OFF'}  (pulgar 1,2 s)",
-                         (60, 220, 60) if control else (100, 100, 100)))
-                    lineas.append(("indice=mover  pinza=clic izq  2 dedos=clic der",
-                                   (180, 180, 180)))
-                    lineas.append(("abrir=acercar  cerrar=alejar",
-                                   (180, 180, 180)))
-                    lineas.append((f"FPS: {fps:4.1f}", (240, 240, 240)))
-                    lineas.append(("paz 2 s = salir", (170, 170, 170)))
-                    dibujar_panel(frame, lineas)
 
                 cv2.imshow(NOMBRE_VENTANA, frame)
 
-                # Teclas de respaldo (solo con el foco en esta ventana)
+                # Salir: tecla q/ESC o el boton X de la ventana.
                 tecla = cv2.waitKey(1) & 0xFF
                 if tecla in (ord("q"), 27):     # 'q' o ESC
+                    break
+                if cv2.getWindowProperty(NOMBRE_VENTANA,
+                                         cv2.WND_PROP_VISIBLE) < 1:
                     break
                 if tecla == ord("c"):
                     control = not control
                     puntero.reiniciar()
                     zoom.reiniciar()
                     clics.soltar()
-                if tecla == ord("f"):
-                    mostrar_panel = not mostrar_panel
-                if tecla == ord("s"):
-                    suavizar = not suavizar
     finally:
-        entrada.soltar_todo()     # nunca dejar Ctrl pulsado al salir
+        entrada.soltar_todo()     # botones y tecla Windows, nunca hundidos
+        if CERRAR_LUPA_AL_SALIR:
+            entrada.cerrar_lupa()  # devolver la pantalla a su tamano normal
         cap.release()
         cv2.destroyAllWindows()
 
