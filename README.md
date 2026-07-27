@@ -13,18 +13,21 @@ la mano **hace zoom en la ventana activa**. Todo se maneja con las manos.
 Los gestos se distinguen por el **número de dedos estirados**. Nada de juntar
 puntas ni medir separaciones: cuentas dedos y ya está.
 
-| Dedos | Gesto | Qué hace |
-|:---:|---|---|
-| **1** ☝️ | índice | **mueve el cursor** de Windows |
-| **2** ✌️ | índice + medio | **clic izquierdo** — mantén y mueve para **arrastrar** |
-| **3** 🖖 | índice + medio + anular | **clic derecho** |
-| **5** ✋ | mano abierta | **acercar** (zoom in), sostenido |
-| **0** ✊ | puño | **alejar** (zoom out), sostenido |
-| 👍 | solo el pulgar, hacia arriba | mantén **1,2 s**: activa/desactiva el control |
-| 🤙 | pulgar + meñique | mantén **2 s**: **salir** del programa |
+| Gesto | Qué hace |
+|:---:|---|
+| ☝️ **1 dedo** (índice) | **mueve el cursor** de Windows |
+| ✌️ **2 dedos** (índice + medio) | **clic izquierdo** — mantén y mueve para **arrastrar** |
+| 👍 **pulgar arriba** | **clic derecho** |
+| ✋ **mano abierta** | **acercar** con la Lupa, sostenido |
+| ✊ **puño** | **alejar** con la Lupa, sostenido |
+| 🤙 **pulgar + meñique** | mantén **1,2 s**: activa/desactiva el control |
 
-El pulgar da igual al apuntar y al hacer clic: `1 dedo` y `1 dedo + pulgar` (la
-"L") hacen lo mismo. Cualquier otra forma no hace nada.
+**Salir:** tecla `q`/`ESC` o el botón X de la ventana.
+
+Ningún gesto usa el **anular**, ni te obliga a mover el **meñique por separado**
+— son los dedos más difíciles de aislar. El pulgar da igual al apuntar y al
+hacer clic: `1 dedo` y `1 dedo + pulgar` (la "L") hacen lo mismo. Cualquier otra
+forma no hace nada.
 
 ## Archivos
 
@@ -33,11 +36,16 @@ El pulgar da igual al apuntar y al hacer clic: `1 dedo` y `1 dedo + pulgar` (la
 
 ## Instalación
 
-El entorno ya está creado en `.venv` (Python 3.13). Si necesitas rehacerlo:
+Funciona en cualquier PC con Windows y Python 3.9–3.13. Desde la carpeta del
+proyecto:
 
 ```bash
-py -3.13 -m venv .venv && .venv\Scripts\python.exe -m pip install -r requirements.txt
+py -m venv .venv && .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
+
+Si no tienes Python, instálalo desde [python.org](https://www.python.org/downloads/).
+`iniciar.bat` también funciona sin entorno virtual: si no encuentra `.venv`, usa
+el Python del sistema.
 
 ## Ejecución
 
@@ -115,6 +123,42 @@ avanzan poco (control fino) y los rápidos avanzan mucho (llegas de un lado a ot
 de la pantalla sin recorrer todo el encuadre). Se ajusta con `GANANCIA_PUNTERO`
 (velocidad base) y `ACELERACION` (empuje extra en gestos rápidos).
 
+### Calibración portable
+
+La sensibilidad **no está en píxeles**, sino en unidades relativas: el
+desplazamiento del dedo se mide como fracción del encuadre y se convierte a
+fracción de la pantalla. Por eso `GANANCIA_PUNTERO = 2.0` significa *"cruzar el
+encuadre entero equivale a cruzar 2 pantallas"* — y eso vale igual en un
+portátil de 1366×768 que en un monitor 4K, y con una webcam de 640×480 o de
+1080p.
+
+### Ajustar la sensibilidad
+
+Cambia **solo `GANANCIA_PUNTERO`**. Esta tabla dice qué porcentaje de la pantalla
+recorre el cursor según lo que muevas la mano (100 % = llegas al borde):
+
+| `GANANCIA_PUNTERO` | gesto corto<br>(15 % del encuadre) | gesto medio<br>(25 %) | barrido<br>(50 %) |
+|:---:|:---:|:---:|:---:|
+| 1.0 | 17 % | 30 % | 70 % |
+| 1.3 | 23 % | 39 % | 91 % |
+| 1.6 | 28 % | 48 % | 100 % |
+| **2.0** ← actual | **35 %** | **59 %** | **100 %** |
+| 2.5 | 43 % | 74 % | 100 % |
+| 3.0 | 52 % | 89 % | 100 % |
+| 4.0 | 69 % | 100 % | 100 % |
+
+Si el cursor se te queda corto, sube a 2.5 o 3.0. Si se te escapa y no puedes
+afinar, baja a 1.6. Por encima de 3.0 cuesta apuntar a cosas pequeñas.
+
+Antes estaba en píxeles crudos, y eso hacía que la app fuera **disparada en una
+pantalla pequeña y lentísima en una 4K**, además de cambiar de tacto según la
+resolución de la webcam. Hay un test que barre el dedo un 25 % del encuadre en
+4 pantallas y 4 webcams distintas y comprueba que el cursor recorre siempre el
+mismo 59 % de la pantalla (dispersión < 0,05 %).
+
+Lo mismo vale para `ZONA_MUERTA` y `UMBRAL_ARRASTRE`: también son fracciones del
+encuadre, no píxeles.
+
 El movimiento se inyecta con `SendInput` en coordenadas absolutas del escritorio
 virtual, así que funciona bien con varios monitores y con escalado de pantalla
 (el proceso se declara *DPI-aware*). Sobre la imagen de la cámara se dibujan la
@@ -130,12 +174,13 @@ diana y la estela como referencia.
 - **Clic izquierdo** → estira **2 dedos** (índice + medio). Un toque corto es un
   clic; si los **mantienes arriba y mueves la mano, arrastras** (arrastrar y
   soltar, seleccionar texto, mover ventanas).
-- **Clic derecho** → estira **3 dedos** (índice + medio + anular).
+- **Clic derecho** → **pulgar arriba** 👍. Tiene que apuntar hacia arriba de
+  verdad: un puño con el pulgar asomando de lado no cuenta.
 
-Antes esto se hacía con una pinza (juntar pulgar e índice) y con dos dedos
-*pegados* frente a *separados*. Ambos dependían de umbrales de distancia entre
-puntas: difíciles de acertar y frágiles. Contar dedos es mucho más fiable, y de
-paso desaparecieron todos esos umbrales del código.
+Antes el clic derecho eran 3 dedos, pero exigía estirar el **anular** dejando el
+meñique abajo — un movimiento que a casi nadie le sale limpio, y el meñique
+tiende a subirse solo. El pulgar es independiente por naturaleza, así que sale
+sin pensar.
 
 Dos detalles para que no falle:
 
@@ -144,32 +189,39 @@ en el sitio, así que el clic cae justo donde apuntabas. Solo cuando mueves la
 mano más de `UMBRAL_ARRASTRE` (16 px) pasa a arrastrar de verdad.
 
 **No hay clics accidentales al abrir o cerrar la mano.** Al pasar de puño a mano
-abierta los dedos cruzan un instante por "2" y por "3". Contra eso hay dos
-defensas: el voto mayoritario de 5 frames (un estado que dura 2 frames no llega
-a registrarse) y, para el clic derecho, `ESTABILIDAD_CLIC_DER` (0,15 s) de gesto
-mantenido.
+abierta los dedos cruzan un instante por "2" y por "solo pulgar". Contra eso hay
+dos defensas: el voto mayoritario de 5 frames (un estado que dura 2 frames no
+llega a registrarse) y, para el clic derecho, `ESTABILIDAD_CLIC_DER` (0,15 s) de
+gesto mantenido.
 
 **Seguridad:** el botón nunca se queda hundido. Se suelta al perder la mano, al
 apagar el control, al cambiar de gesto y al salir del programa (`soltar_todo`).
 
-## El zoom (abrir / cerrar la mano)
+## El zoom: la Lupa de Windows
 
-- **Mano abierta** (palma, cinco dedos) → **acercar**.
-- **Puño** (mano cerrada) → **alejar**.
+- **Mano abierta** ✋ → **acercar**.
+- **Puño** ✊ → **alejar**.
 
-Mientras mantienes el gesto se van enviando pulsaciones `Ctrl` + `+` / `Ctrl` +
-`-` a la **ventana que tengas seleccionada** (la de primer plano): un clic al
-empezar y luego uno cada `ZOOM_INTERVALO` segundos. Pasar de palma a puño
-invierte el sentido al instante. Es el atajo de zoom más universal de Windows:
-navegadores, VS Code, Office, visores de PDF, Explorador...
+Se envía `Win` + `+` / `Win` + `-`, que controla la **Lupa de Windows**: la
+función de zoom nativa del sistema. Amplía **toda la pantalla**, así que funciona
+en cualquier aplicación, en el escritorio y hasta en los menús — da igual qué
+ventana tengas seleccionada.
 
-Detalle importante: como el zoom va a la ventana en primer plano, **la ventana
-de la cámara no puede ser la seleccionada** cuando haces el gesto. Si lo es, el
-programa lo detecta y no envía nada (silenciosamente). Pincha en la aplicación
-que quieras ampliar y sigue gobernándolo todo con la mano.
+Antes esto era `Ctrl` + `+`/`-`, el zoom interno de cada app. Tenía dos pegas
+que la Lupa elimina: solo funcionaba donde estuviera implementado (nada en el
+Escritorio, el menú Inicio o muchas apps), y obligaba a tener esa ventana en
+primer plano — lo que chocaba con la propia ventana de la cámara.
 
-Si alguna aplicación no responde, pon `ZOOM_NUMERICO = True` para usar el `+`/`-`
-del teclado numérico.
+Mientras mantienes el gesto se envía un paso al empezar y luego uno cada
+`ZOOM_INTERVALO` segundos. Pasar de palma a puño invierte el sentido al instante.
+
+Al cerrar el programa se envía `Win` + `Esc` para **cerrar la Lupa y devolver la
+pantalla a su tamaño normal** — pero solo si fuimos nosotros quienes la abrimos,
+para no cerrártela si ya la estabas usando por tu cuenta. Se desactiva con
+`CERRAR_LUPA_AL_SALIR = False`.
+
+Un detalle de implementación: al pulsar `Win` siempre se pulsa otra tecla antes
+de soltarla. Si `Win` se pulsara y soltara sola, Windows abriría el menú Inicio.
 
 ## Ajustes de rendimiento
 
@@ -182,14 +234,18 @@ Todo está agrupado en el bloque *Configuración* al inicio de
   fluidez más directa.
 - `ANCHO`/`ALTO` — 960×540 es un buen equilibrio; 1280×720 se ve mejor pero
   cuesta en dibujado.
-- `GANANCIA_PUNTERO`, `ACELERACION` — velocidad y aceleración del puntero.
+- `GANANCIA_PUNTERO` — sensibilidad del cursor; usa la
+  [tabla de arriba](#ajustar-la-sensibilidad). `ACELERACION` — empuje extra en
+  los gestos rápidos, para cruzar la pantalla de un manotazo.
+- `INDICE_CAMARA` — `None` busca la webcam sola; pon un número para forzar una.
 - `UMBRAL_ARRASTRE` — cuánto hay que mover la mano para pasar de clic a
-  arrastre. `ESTABILIDAD_CLIC_DER` — cuánto hay que mantener los 3 dedos.
+  arrastre. `ESTABILIDAD_CLIC_DER` — cuánto hay que mantener 👍.
 - `VENTANA_SUAVIZADO` — frames del voto mayoritario; subirlo da gestos más
   estables (menos clics accidentales) a costa de algo de retraso.
 - `ZOOM_INTERVALO` — cadencia del zoom mientras mantienes la mano abierta o
   cerrada (más bajo = zoom más rápido).
-- `ESPERA_CONTROL`, `ESPERA_SALIR` — cuánto hay que mantener 👍 y 🤙.
+- `ESPERA_CONTROL` — cuánto hay que mantener 🤙 para activar/desactivar.
+- `CERRAR_LUPA_AL_SALIR` — si al salir se devuelve la pantalla al 100 %.
 - `SIMULAR_ENTRADA = True` — modo seguro: imprime las acciones en vez de
   enviarlas al sistema.
 
@@ -233,8 +289,16 @@ Con pruebas automáticas, sin cámara:
   dirección correcta, el embrague no salta al recolocar, la zona muerta ignora el
   temblor y nunca se sale del escritorio virtual (incluido un segundo monitor con
   coordenadas negativas).
-- Zoom por abrir/cerrar la mano: primer clic inmediato, cadencia mientras se
+- Zoom por abrir/cerrar la mano: primer paso inmediato, cadencia mientras se
   mantiene, inversión instantánea palma↔puño y corte al soltar.
+- **Lupa**: arranca cerrada, acercar la marca como abierta, alejar no la abre,
+  y `cerrar_lupa()` es idempotente (no reenvía `Win`+`Esc` de más).
+- Que ningún gesto exige estirar el **anular** ni aislar el **meñique**, y que un
+  pulgar asomando **de lado** no dispara el clic derecho.
+- **Portabilidad**: el mismo gesto recorre el mismo % de pantalla en 1366×768,
+  1080p, QHD y 4K, y con webcams de 640×480 a 1080p (dispersión < 0,05 %); el
+  cursor no se sale por el borde de un monitor en coordenadas negativas; y
+  ningún archivo distribuible contiene rutas absolutas.
 - **Clics**: 2 dedos pulsan y sueltan el botón; un temblor pequeño sigue siendo
   clic y un movimiento claro pasa a arrastre; el cursor se congela durante el
   clic; el clic derecho pulsa y suelta sin quedarse abajo y no se dispara al
@@ -249,7 +313,7 @@ Con pruebas automáticas, sin cámara:
   y con el control apagado no se mueve nada.
 - `sizeof(INPUT)` correcto en 64 bits.
 
-Sin cámara, **87 comprobaciones en verde** (38 gestos/clics + 32 puntero/zoom
-+ 9 dispatch + 8 patrones). Sin probar: la webcam en vivo y el efecto real del
-zoom y los clics sobre una aplicación concreta. Eso hay que ejecutarlo delante
-de la cámara.
+Sin cámara, **109 comprobaciones en verde** (50 gestos/clics/lupa + 31
+puntero/cursor + 12 portabilidad + 9 dispatch + 7 patrones). Sin probar: la
+webcam en vivo y el efecto real de la Lupa y los clics sobre una aplicación
+concreta. Eso hay que ejecutarlo delante de la cámara.

@@ -3,8 +3,12 @@ REM Genera el ejecutable en dist\GestosManos\GestosManos.exe
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\pyinstaller.exe" (
-    echo Falta PyInstaller en el entorno. Instalalo con:
+    echo Falta PyInstaller en el entorno virtual. Instalalo con:
     echo   .venv\Scripts\python.exe -m pip install pyinstaller pyinstaller-hooks-contrib
+    echo.
+    echo Si aun no tienes el entorno, crealo primero:
+    echo   py -m venv .venv
+    echo   .venv\Scripts\python.exe -m pip install -r requirements.txt
     pause
     exit /b 1
 )

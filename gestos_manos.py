@@ -70,8 +70,15 @@ from control_windows import EntradaWindows
 # Configuracion
 # --------------------------------------------------------------------------- #
 
-INDICE_CAMARA = 0          # 0 = webcam por defecto
-ANCHO, ALTO = 960, 540     # resolucion de captura solicitada a la camara
+# None = busca sola la primera camara que funcione (en muchos portatiles la
+# webcam real no es la 0: la camara de infrarrojos de Windows Hello la ocupa).
+# Pon un numero si quieres forzar una en concreto.
+INDICE_CAMARA = None
+CAMARAS_A_PROBAR = 4       # indices 0..3 al buscar automaticamente
+
+# Resolucion que se le PIDE a la camara; puede no concederla, asi que el codigo
+# siempre trabaja con el tamano real del frame recibido.
+ANCHO, ALTO = 960, 540
 NOMBRE_VENTANA = "Detector de gestos - MediaPipe"
 MAX_MANOS = 2              # bajar a 1 da unos FPS extra
 CONF_DETECCION = 0.6
@@ -96,20 +103,26 @@ ESPERA_CONTROL = 1.2       # segundos
 # --- Puntero relativo (tipo raton / trackpad) ------------------------------ #
 # El puntero se desplaza segun cuanto muevas la mano, no segun donde este; al
 # bajar la mano y volver a apuntar continua desde donde se quedo (como levantar
-# un raton para recolocarlo). No hay recuadro fijo que mapear.
-GANANCIA_PUNTERO = 3.2     # px de pantalla por cada px que se mueve el dedo
-ACELERACION = 0.9          # empuje extra en gestos rapidos (0 = velocidad constante)
-VEL_ACEL_MAX = 45.0        # px/frame del dedo donde la aceleracion llega al tope
+# un raton para recolocarlo).
+#
+# CALIBRACION PORTABLE: todos estos valores son RELATIVOS, no pixeles. El
+# desplazamiento del dedo se mide como fraccion del encuadre y se convierte a
+# fraccion de la pantalla, asi que el tacto es el mismo en cualquier equipo,
+# con cualquier resolucion de webcam y de monitor. Con pixeles crudos, la misma
+# app iba disparada en una pantalla 1080p y lentisima en una 4K.
+GANANCIA_PUNTERO = 2.0     # anchos de pantalla por cada ancho de encuadre recorrido
+ACELERACION = 1.4          # empuje extra en gestos rapidos (0 = velocidad constante)
+VEL_ACEL_MAX = 0.05        # fraccion del encuadre por frame donde la acel. topa
 SUAVIZADO_DEDO = 0.5       # EMA de la punta antes de medir el desplazamiento
-ZONA_MUERTA = 0.6          # px del dedo por debajo de los cuales no se mueve nada
+ZONA_MUERTA = 0.0008       # fraccion del encuadre por debajo de la cual no se mueve
 
 # --- Clics ------------------------------------------------------------------ #
 # Los clics se distinguen por el NUMERO de dedos estirados, no por distancias
 # finas entre puntas: es mucho mas facil de hacer y de detectar.
 #   2 dedos (indice + medio)          -> clic izquierdo / arrastrar
 #   3 dedos (indice + medio + anular) -> clic derecho
-ESTABILIDAD_CLIC_DER = 0.15  # s que hay que mantener los 3 dedos
-UMBRAL_ARRASTRE = 16.0     # px de pantalla antes de pasar de clic a arrastre
+ESTABILIDAD_CLIC_DER = 0.15  # s que hay que mantener el pulgar arriba
+UMBRAL_ARRASTRE = 0.02     # fraccion del encuadre a recorrer para pasar a arrastre
 
 LARGO_ESTELA = 26          # posiciones que deja el rastro del dedo (0 = sin estela)
 GROSOR_ESTELA = 7          # grosor del trazo en la punta
@@ -376,17 +389,27 @@ class ControlPuntero:
         dx, dy = sx - self._dedo[0], sy - self._dedo[1]
         self._dedo = (sx, sy)
 
-        recorrido = math.hypot(dx, dy)
+        # Todo en unidades RELATIVAS al encuadre: asi el tacto no depende de la
+        # resolucion de la webcam (una de 1280 px daria el doble de "dx" que una
+        # de 640 para el mismo gesto fisico).
+        fx, fy = dx / ancho, dy / alto
+        recorrido = math.hypot(fx, fy)
         if not mover or recorrido < ZONA_MUERTA:   # congelado o mano quieta
             return int(round(self._x)), int(round(self._y))
 
-        # Aceleracion: los gestos rapidos avanzan mas por px (control fino en
-        # lento, alcance en rapido), como la aceleracion del raton de Windows.
+        # Aceleracion: los gestos rapidos avanzan mas (control fino en lento,
+        # alcance en rapido), como la aceleracion del raton de Windows.
         empuje = GANANCIA_PUNTERO * (
             1.0 + ACELERACION * recortar(recorrido / VEL_ACEL_MAX, 0.0, 1.0))
-        self._x = recortar(self._x + dx * empuje,
+
+        # De fraccion de encuadre a pixeles de pantalla: cruzar el encuadre
+        # entero equivale a cruzar GANANCIA_PUNTERO pantallas, en cualquier
+        # monitor. Cada eje se escala con su propia dimension para poder
+        # alcanzar los bordes aunque la camara y la pantalla no compartan
+        # relacion de aspecto.
+        self._x = recortar(self._x + fx * empuje * self.entrada.ancho,
                            self.entrada.x0, self.entrada.x0 + self.entrada.ancho - 1)
-        self._y = recortar(self._y + dy * empuje,
+        self._y = recortar(self._y + fy * empuje * self.entrada.alto,
                            self.entrada.y0, self.entrada.y0 + self.entrada.alto - 1)
         pos = (int(round(self._x)), int(round(self._y)))
         self.entrada.mover_cursor(*pos)
@@ -407,9 +430,15 @@ class ControlClics:
         self._ancla: tuple[float, float] | None = None   # dedo al iniciar el clic
         self.arrastrando = False
 
-    def actualizar_izquierdo(self, pulsando: bool,
-                             punta: tuple[float, float]) -> bool:
-        """Sincroniza el boton izquierdo con el gesto. Devuelve si hay arrastre."""
+    def actualizar_izquierdo(self, pulsando: bool, punta: tuple[float, float],
+                             ancho: int) -> bool:
+        """Sincroniza el boton izquierdo con el gesto. Devuelve si hay arrastre.
+
+        `ancho` es el del encuadre y es obligatorio: el umbral de arrastre se
+        mide como fraccion de el, para que se comporte igual con cualquier
+        resolucion de webcam. Sin valor por defecto a proposito, porque uno
+        equivocado convertiria cualquier temblor en un arrastre.
+        """
         if pulsando:
             if self._ancla is None:          # acaba de empezar: pulsar
                 self._ancla = punta
@@ -417,7 +446,7 @@ class ControlClics:
                 self.entrada.boton(derecho=False, presionar=True)
             elif not self.arrastrando:
                 # Un movimiento claro convierte el clic en arrastre.
-                if distancia(punta, self._ancla) > UMBRAL_ARRASTRE:
+                if distancia(punta, self._ancla) / ancho > UMBRAL_ARRASTRE:
                     self.arrastrando = True
         else:
             self.soltar()
@@ -537,14 +566,53 @@ def crear_detector() -> vision.HandLandmarker:
     return vision.HandLandmarker.create_from_options(opciones)
 
 
-def abrir_camara() -> cv2.VideoCapture:
-    """Abre la webcam con el backend DirectShow (arranque rapido en Windows)."""
-    cap = cv2.VideoCapture(INDICE_CAMARA, cv2.CAP_DSHOW)
+def _intentar_camara(indice: int) -> cv2.VideoCapture | None:
+    """Abre una camara y comprueba que entrega imagen de verdad.
+
+    Que `isOpened()` diga True no basta: hay dispositivos fantasma que abren
+    pero no dan ni un frame. Por eso se lee uno antes de darla por buena.
+    """
+    cap = cv2.VideoCapture(indice, cv2.CAP_DSHOW)
+    if not cap.isOpened():
+        cap.release()
+        return None
+
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, ANCHO)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, ALTO)
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # menos latencia: no acumular frames
+
+    ok, frame = cap.read()
+    if not ok or frame is None:
+        cap.release()
+        return None
     return cap
+
+
+def abrir_camara() -> cv2.VideoCapture:
+    """Abre la webcam, buscandola sola si `INDICE_CAMARA` es None.
+
+    Se usa el backend DirectShow, que en Windows arranca mucho mas rapido.
+    """
+    indices = ([INDICE_CAMARA] if INDICE_CAMARA is not None
+               else range(CAMARAS_A_PROBAR))
+
+    for indice in indices:
+        cap = _intentar_camara(indice)
+        if cap is not None:
+            real_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            real_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            print(f"Camara {indice} lista ({real_w}x{real_h}).")
+            return cap
+        print(f"Camara {indice}: no disponible.")
+
+    raise SystemExit(
+        "No se encontro ninguna camara que funcione.\n"
+        "- Comprueba que no la este usando otra aplicacion (Teams, Zoom...).\n"
+        "- Revisa Configuracion > Privacidad > Camara y permite el acceso a "
+        "las aplicaciones de escritorio.\n"
+        "- Si tienes varias camaras, fija INDICE_CAMARA a mano en el codigo."
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -552,12 +620,7 @@ def abrir_camara() -> cv2.VideoCapture:
 # --------------------------------------------------------------------------- #
 
 def main() -> None:
-    cap = abrir_camara()
-    if not cap.isOpened():
-        raise SystemExit(
-            "No se pudo abrir la camara. Revisa que no la este usando otra "
-            "aplicacion y los permisos en Configuracion > Privacidad > Camara."
-        )
+    cap = abrir_camara()          # lanza SystemExit con ayuda si no hay ninguna
 
     entrada = EntradaWindows(simular=SIMULAR_ENTRADA,
                              teclado_numerico=ZOOM_NUMERICO)
@@ -647,7 +710,7 @@ def main() -> None:
 
                     # Con el boton pulsado el cursor se congela (clic limpio)
                     # hasta que muevas lo suficiente: entonces pasa a arrastrar.
-                    arrastrando = clics.actualizar_izquierdo(pulsando, punta)
+                    arrastrando = clics.actualizar_izquierdo(pulsando, punta, ancho)
                     pos = puntero.actualizar(punta, ancho, alto,
                                              mover=not pulsando or arrastrando)
 
