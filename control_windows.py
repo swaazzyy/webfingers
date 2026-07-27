@@ -103,6 +103,8 @@ class EntradaWindows:
         self.izq_pulsado = False          # estado de los botones, para poder
         self.der_pulsado = False          # soltarlos siempre al terminar
         self.lupa_abierta = False         # para poder cerrarla nosotros al salir
+        self.entrada_bloqueada = False    # True si Windows rechaza SendInput
+        self._aviso_bloqueo = False       # el aviso se imprime una sola vez
         if not simular:
             habilitar_dpi()
         # Origen y tamano del escritorio virtual (soporta varios monitores)
@@ -114,14 +116,32 @@ class EntradaWindows:
     # -- utilidades internas ------------------------------------------------ #
 
     def _enviar(self, *entradas: INPUT) -> int:
-        """Inyecta los eventos en la cola de entrada del sistema."""
+        """Inyecta los eventos en la cola de entrada del sistema.
+
+        NO lanza excepcion si Windows rechaza la inyeccion: eso mataria el bucle
+        de deteccion entero. Pasa de verdad —una politica de seguridad, un
+        antivirus o una ventana elevada en primer plano pueden bloquear la
+        entrada sintetica— y ante eso la app debe seguir viva y avisar una vez.
+        Devuelve cuantos eventos se enviaron (0 = bloqueado).
+        """
         if self.simular:
             return len(entradas)
         n = len(entradas)
         buffer = (INPUT * n)(*entradas)
+        ctypes.set_last_error(0)
         enviados = _user32.SendInput(n, buffer, ctypes.sizeof(INPUT))
         if enviados != n:
-            raise ctypes.WinError(ctypes.get_last_error())
+            self.entrada_bloqueada = True
+            if not self._aviso_bloqueo:
+                self._aviso_bloqueo = True
+                codigo = ctypes.get_last_error()
+                print(f"AVISO: Windows rechazo la entrada sintetica "
+                      f"(SendInput error {codigo}). El cursor no se movera.\n"
+                      f"       Suele ser una ventana ejecutada como "
+                      f"administrador en primer plano, o un antivirus. "
+                      f"La deteccion sigue funcionando.")
+        else:
+            self.entrada_bloqueada = False
         return enviados
 
     @staticmethod

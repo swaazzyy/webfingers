@@ -1,0 +1,21 @@
+{
+  "tema": "oscuro",
+  "gestos": {
+    "un_dedo": "mover",
+    "dos_dedos": "clic_izq",
+    "tres_dedos": "nada",
+    "pulgar": "clic_der",
+    "mano_abierta": "zoom_in",
+    "puno": "zoom_out",
+    "pulgar_menique": "alternar"
+  },
+  "sensibilidad": {
+    "ganancia": 0.8,
+    "aceleracion": 1.4
+  },
+  "camara": {
+    "indice": null,
+    "compartir": true,
+    "menu_siempre": false
+  }
+}

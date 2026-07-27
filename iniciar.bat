@@ -1,27 +1,19 @@
 @echo off
-REM Lanzador del detector de gestos: doble clic y listo.
-REM Funciona en cualquier equipo: usa el entorno virtual de la carpeta si
-REM existe y, si no, cualquier Python que haya instalado en el sistema.
+REM Abre el launcher grafico (la ventana de la app). Preferimos Gestos.vbs para
+REM que no aparezca ninguna consola; este .bat es la alternativa por terminal.
+REM Usa el entorno virtual de la carpeta si existe y, si no, el Python del sistema.
 
 cd /d "%~dp0"
 
-REM 1) Entorno virtual junto al script (lo normal tras seguir el README)
-if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" gestos_manos.py
-    goto :fin
+REM pythonw = sin ventana de consola
+if exist ".venv\Scripts\pythonw.exe" (
+    start "" ".venv\Scripts\pythonw.exe" launcher.py
+    goto :eof
 )
 
-REM 2) Sin venv: probar el lanzador "py" y luego "python" del PATH
-where py >nul 2>&1 && (
-    echo No hay entorno virtual; usando el Python del sistema.
-    py gestos_manos.py
-    goto :fin
-)
-where python >nul 2>&1 && (
-    echo No hay entorno virtual; usando el Python del sistema.
-    python gestos_manos.py
-    goto :fin
-)
+where pythonw >nul 2>&1 && ( start "" pythonw launcher.py & goto :eof )
+where pyw     >nul 2>&1 && ( start "" pyw launcher.py & goto :eof )
+where python  >nul 2>&1 && ( python launcher.py & goto :eof )
 
 echo.
 echo No se encontro Python en este equipo.
@@ -29,8 +21,3 @@ echo Instalalo desde https://www.python.org/downloads/ y luego crea el entorno:
 echo     py -m venv .venv
 echo     .venv\Scripts\python.exe -m pip install -r requirements.txt
 pause
-exit /b 1
-
-:fin
-REM Si algo falla, la ventana se queda abierta para poder leer el error.
-if errorlevel 1 pause

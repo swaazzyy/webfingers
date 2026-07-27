@@ -64,26 +64,33 @@ import mediapipe as mp
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
 
+import camara
+import config
 from control_windows import EntradaWindows
 
 # --------------------------------------------------------------------------- #
 # Configuracion
 # --------------------------------------------------------------------------- #
 
-# None = busca sola la primera camara que funcione (en muchos portatiles la
-# webcam real no es la 0: la camara de infrarrojos de Windows Hello la ocupa).
-# Pon un numero si quieres forzar una en concreto.
+# Camara --------------------------------------------------------------------- #
+# None = detecta las camaras conectadas y, si hay mas de una, abre un menu para
+# elegir. Pon un numero para forzar una en concreto (se salta el menu).
 INDICE_CAMARA = None
-CAMARAS_A_PROBAR = 4       # indices 0..3 al buscar automaticamente
+CAMARAS_A_PROBAR = 4         # cuantos indices (0..N-1) explorar al detectar
+MENU_CAMARA_SIEMPRE = False  # True = mostrar el menu en cada arranque
+COMPARTIR_CAMARA = True      # True = usar MSMF para poder compartir con otras apps
 
 # Resolucion que se le PIDE a la camara; puede no concederla, asi que el codigo
 # siempre trabaja con el tamano real del frame recibido.
 ANCHO, ALTO = 960, 540
 NOMBRE_VENTANA = "Detector de gestos - MediaPipe"
-MAX_MANOS = 2              # bajar a 1 da unos FPS extra
+# Una sola mano: se controla con una y evita el bug de que el puntero salte a
+# la otra mano que aparezca en el encuadre. MediaPipe no garantiza el orden de
+# las manos entre frames, asi que con 2 el "principal" bailaba de una a otra.
+MAX_MANOS = 1
 CONF_DETECCION = 0.6
 CONF_PRESENCIA = 0.5
-CONF_SEGUIMIENTO = 0.5
+CONF_SEGUIMIENTO = 0.6      # un poco mas alto: tracking mas estable, menos saltos
 
 # La inferencia se hace sobre una copia reducida del frame; los landmarks son
 # normalizados (0..1), asi que se dibujan igual sobre el frame a tamano completo.
@@ -110,10 +117,26 @@ ESPERA_CONTROL = 1.2       # segundos
 # fraccion de la pantalla, asi que el tacto es el mismo en cualquier equipo,
 # con cualquier resolucion de webcam y de monitor. Con pixeles crudos, la misma
 # app iba disparada en una pantalla 1080p y lentisima en una 4K.
-GANANCIA_PUNTERO = 2.0     # anchos de pantalla por cada ancho de encuadre recorrido
+GANANCIA_PUNTERO = 2.0     # sensibilidad general (la ajusta el slider de la GUI)
 ACELERACION = 1.4          # empuje extra en gestos rapidos (0 = velocidad constante)
 VEL_ACEL_MAX = 0.05        # fraccion del encuadre por frame donde la acel. topa
-SUAVIZADO_DEDO = 0.5       # EMA de la punta antes de medir el desplazamiento
+
+# PRECISION: a baja velocidad el cursor avanza solo esta fraccion de la ganancia,
+# para poder apuntar fino; a alta velocidad se suma la aceleracion para llegar
+# lejos. Asi hay precision Y alcance sin elegir uno u otro.
+PRECISION_PUNTERO = 0.45
+
+# Suavizado ADAPTATIVO de la punta (estilo filtro 1-euro): mucho filtro cuando la
+# mano casi no se mueve (quita el temblor, gana precision) y casi ninguno en
+# gestos rapidos (sin retraso). SUAVIZADO_MIN es el filtro en reposo.
+SUAVIZADO_MIN = 0.35
+VEL_SUAVE = 0.03           # fraccion/frame a la que el suavizado ya no filtra
+
+# Salto imposible en un frame (fraccion del encuadre): si la punta "teletransporta"
+# mas que esto, es un glitch o que MediaPipe cambio de mano -> se reancla sin
+# mover el cursor, en vez de pegar un latigazo.
+SALTO_MAX = 0.35
+
 ZONA_MUERTA = 0.0008       # fraccion del encuadre por debajo de la cual no se mueve
 
 # --- Clics ------------------------------------------------------------------ #
@@ -150,41 +173,54 @@ ALTURA_MIN_PULGAR = 0.35    # cuanto debe subir el pulgar sobre la muneca
 # Etiquetas de gesto y colores
 # --------------------------------------------------------------------------- #
 
-PUNO = "PUNO"               # 0 dedos: alejar
-MANO_ABIERTA = "MANO ABIERTA"   # 5 dedos: acercar
-APUNTANDO = "APUNTANDO"     # 1 dedo:  mueve el cursor
-CLIC_IZQ = "CLIC IZQ"       # 2 dedos: pulsa / arrastra
-CLIC_DER = "CLIC DER"       # pulgar arriba
-ALTERNAR = "ON/OFF"         # pulgar + menique: activa/desactiva el control
+# --- Formas de la mano (lo que detecta la camara) --------------------------- #
+# Su id coincide con el del editor de gestos (ver config.py). Que accion hace
+# cada una la decide el usuario en la GUI; aqui solo se reconocen.
+UN_DEDO = "un_dedo"
+DOS_DEDOS = "dos_dedos"
+TRES_DEDOS = "tres_dedos"
+PULGAR = "pulgar"
+MANO_ABIERTA = "mano_abierta"
+PUNO = "puno"
+PULGAR_MENIQUE = "pulgar_menique"
 DESCONOCIDO = "---"
 
-# Patron de dedos (pulgar, indice, medio, anular, menique) -> gesto.
-# El pulgar es indiferente al apuntar y al hacer clic, asi que cada uno aparece
-# con el pulgar recogido y estirado. No hay ningun gesto que use el anular ni
-# obligue a controlar el menique por separado: son los mas incomodos de hacer.
+# Patron de dedos (pulgar, indice, medio, anular, menique) -> forma. El pulgar
+# es indiferente en las formas de dedos, asi que cada una aparece con el pulgar
+# recogido y estirado.
 PATRONES = {
-    (0, 1, 0, 0, 0): APUNTANDO,
-    (1, 1, 0, 0, 0): APUNTANDO,      # tambien la forma de "L"
-    (0, 1, 1, 0, 0): CLIC_IZQ,
-    (1, 1, 1, 0, 0): CLIC_IZQ,
+    (0, 1, 0, 0, 0): UN_DEDO,
+    (1, 1, 0, 0, 0): UN_DEDO,        # tambien la forma de "L"
+    (0, 1, 1, 0, 0): DOS_DEDOS,
+    (1, 1, 1, 0, 0): DOS_DEDOS,
+    (0, 1, 1, 1, 0): TRES_DEDOS,
+    (1, 1, 1, 1, 0): TRES_DEDOS,
     (1, 1, 1, 1, 1): MANO_ABIERTA,
     (0, 0, 0, 0, 0): PUNO,
-    (1, 0, 0, 0, 1): ALTERNAR,       # "llamame"
+    (1, 0, 0, 0, 1): PULGAR_MENIQUE,
 }
 
-# Mano abierta = acercar, puno = alejar (usado por el control de zoom)
-DIR_ZOOM = {MANO_ABIERTA: +1, PUNO: -1}
+# --- Acciones (lo que hace la app). Sus ids coinciden con config.py --------- #
+MOVER = "mover"
+CLIC_IZQ = "clic_izq"
+CLIC_DER = "clic_der"
+ZOOM_IN = "zoom_in"
+ZOOM_OUT = "zoom_out"
+ALTERNAR = "alternar"
+NADA = "nada"
 
-# Gestos que gobiernan el cursor (lo mueven o hacen clic con el)
-GESTOS_PUNTERO = (APUNTANDO, CLIC_IZQ)
+DIR_ZOOM = {ZOOM_IN: +1, ZOOM_OUT: -1}
+ACCIONES_PUNTERO = (MOVER, CLIC_IZQ)     # acciones que gobiernan el cursor
 
-COLORES = {                 # BGR, para dibujar el esqueleto y el puntero
-    PUNO: (60, 60, 235),
-    MANO_ABIERTA: (60, 200, 60),
-    APUNTANDO: (220, 90, 220),
+# Color del esqueleto segun la accion que la mano esta ejecutando (BGR).
+COLOR_ACCION = {
+    MOVER: (220, 90, 220),
     CLIC_IZQ: (255, 255, 90),
     CLIC_DER: (120, 160, 255),
+    ZOOM_IN: (60, 200, 60),
+    ZOOM_OUT: (60, 60, 235),
     ALTERNAR: (235, 180, 40),
+    NADA: (170, 170, 170),
     DESCONOCIDO: (170, 170, 170),
 }
 
@@ -283,21 +319,21 @@ def dedos_extendidos(pts: list[tuple[float, float]]) -> tuple[bool, ...]:
 
 def clasificar_gesto(dedos: tuple[bool, ...],
                      pts: list[tuple[float, float]]) -> str:
-    """Traduce el patron de dedos estirados a un nombre de gesto.
+    """Traduce el patron de dedos estirados a una FORMA de la mano.
 
-    Es una simple consulta a `PATRONES`: cada gesto es un numero de dedos
+    Es una simple consulta a `PATRONES`: cada forma es un numero de dedos
     distinto, sin umbrales de distancia entre puntas. El unico caso especial es
-    el pulgar arriba, que ademas tiene que apuntar hacia arriba de verdad.
+    el pulgar solo, que ademas tiene que apuntar hacia arriba de verdad.
     """
     patron = tuple(int(d) for d in dedos)
 
     if patron == (1, 0, 0, 0, 0):
-        # Pulgar arriba = clic derecho, pero solo si apunta hacia arriba de
-        # verdad: un puno con el pulgar asomando de lado no debe hacer clic.
-        # En imagen la Y crece hacia abajo, de ahi la comparacion invertida.
+        # Pulgar solo cuenta si apunta hacia arriba de verdad: un puno con el
+        # pulgar asomando de lado no debe contar. En imagen la Y crece hacia
+        # abajo, de ahi la comparacion invertida.
         arriba = (pts[PULGAR_TIP][1]
                   < pts[MUNECA][1] - ALTURA_MIN_PULGAR * escala_mano(pts))
-        return CLIC_DER if arriba else DESCONOCIDO
+        return PULGAR if arriba else DESCONOCIDO
 
     return PATRONES.get(patron, DESCONOCIDO)
 
@@ -361,6 +397,10 @@ class ControlPuntero:
         self.entrada = entrada
         self._x, self._y = entrada.posicion_cursor()
         self._dedo: tuple[float, float] | None = None   # punta suavizada (px cam)
+        # Movimiento pendiente de aplicar (fraccion de encuadre). Sin el, los
+        # gestos lentos se perderian frame a frame bajo la zona muerta.
+        self._resto_x = 0.0
+        self._resto_y = 0.0
 
     def reiniciar(self) -> None:
         """Suelta el enganche con el dedo (efecto embrague).
@@ -369,6 +409,7 @@ class ControlPuntero:
         recolocar la mano no provoca ningun salto.
         """
         self._dedo = None
+        self._resto_x = self._resto_y = 0.0
 
     def actualizar(self, punta: tuple[float, float], ancho: int, alto: int,
                    mover: bool = True) -> tuple[int, int]:
@@ -383,30 +424,60 @@ class ControlPuntero:
             self._x, self._y = self.entrada.posicion_cursor()
             return int(round(self._x)), int(round(self._y))
 
-        # Suavizado ligero de la punta para quitar temblor sin anadir retraso.
-        sx = self._dedo[0] + (punta[0] - self._dedo[0]) * SUAVIZADO_DEDO
-        sy = self._dedo[1] + (punta[1] - self._dedo[1]) * SUAVIZADO_DEDO
-        dx, dy = sx - self._dedo[0], sy - self._dedo[1]
-        self._dedo = (sx, sy)
+        # Desplazamiento bruto del dedo, en fraccion del encuadre (asi el tacto
+        # no depende de la resolucion de la webcam).
+        bruto_x = (punta[0] - self._dedo[0]) / ancho
+        bruto_y = (punta[1] - self._dedo[1]) / alto
+        vel = math.hypot(bruto_x, bruto_y)
 
-        # Todo en unidades RELATIVAS al encuadre: asi el tacto no depende de la
-        # resolucion de la webcam (una de 1280 px daria el doble de "dx" que una
-        # de 640 para el mismo gesto fisico).
-        fx, fy = dx / ancho, dy / alto
-        recorrido = math.hypot(fx, fy)
-        if not mover or recorrido < ZONA_MUERTA:   # congelado o mano quieta
+        # Rechazo de saltos: un desplazamiento imposible en un frame es un glitch
+        # o que MediaPipe cambio de mano. Se reancla a la nueva punta y no se
+        # mueve el cursor, evitando el latigazo hacia la otra mano.
+        if vel > SALTO_MAX:
+            self._dedo = punta
+            self._resto_x = self._resto_y = 0.0   # lo pendiente ya no vale
             return int(round(self._x)), int(round(self._y))
 
-        # Aceleracion: los gestos rapidos avanzan mas (control fino en lento,
-        # alcance en rapido), como la aceleracion del raton de Windows.
-        empuje = GANANCIA_PUNTERO * (
-            1.0 + ACELERACION * recortar(recorrido / VEL_ACEL_MAX, 0.0, 1.0))
+        # Suavizado adaptativo: mucho filtro cuando la mano casi no se mueve
+        # (quita el temblor -> precision) y poco cuando va rapida (sin retraso).
+        alfa = SUAVIZADO_MIN + (1.0 - SUAVIZADO_MIN) * recortar(vel / VEL_SUAVE,
+                                                                0.0, 1.0)
+        sx = self._dedo[0] + (punta[0] - self._dedo[0]) * alfa
+        sy = self._dedo[1] + (punta[1] - self._dedo[1]) * alfa
+        fx = (sx - self._dedo[0]) / ancho
+        fy = (sy - self._dedo[1]) / alto
+        self._dedo = (sx, sy)
 
-        # De fraccion de encuadre a pixeles de pantalla: cruzar el encuadre
-        # entero equivale a cruzar GANANCIA_PUNTERO pantallas, en cualquier
-        # monitor. Cada eje se escala con su propia dimension para poder
-        # alcanzar los bordes aunque la camara y la pantalla no compartan
-        # relacion de aspecto.
+        if not mover:                     # congelado (clic): se descarta el gesto
+            self._resto_x = self._resto_y = 0.0
+            return int(round(self._x)), int(round(self._y))
+
+        # El desplazamiento se ACUMULA en un residuo antes de aplicarse. Es lo
+        # que permite mover el cursor despacio: un gesto lento reparte pocos
+        # pixeles por frame y, sin este acumulador, cada uno caia bajo la zona
+        # muerta y se perdia -> el cursor no se movia en absoluto por mucho que
+        # arrastraras el dedo. El ruido aleatorio se cancela solo al sumarse.
+        self._resto_x += fx
+        self._resto_y += fy
+        recorrido = math.hypot(self._resto_x, self._resto_y)
+        if recorrido < ZONA_MUERTA:       # aun no da para un paso: guardar y salir
+            return int(round(self._x)), int(round(self._y))
+
+        fx, fy = self._resto_x, self._resto_y
+        self._resto_x = self._resto_y = 0.0
+
+        # Curva de ganancia: a baja velocidad solo PRECISION_PUNTERO de la
+        # ganancia (control fino); a alta velocidad se suma la aceleracion para
+        # cruzar la pantalla. El exponente hace que la subida sea suave al
+        # principio y agresiva al final. Se mide con la velocidad instantanea
+        # (`vel`), no con el residuo, para que acumular no parezca "ir rapido".
+        factor = recortar(vel / VEL_ACEL_MAX, 0.0, 1.0) ** 1.5
+        empuje = GANANCIA_PUNTERO * (
+            PRECISION_PUNTERO + (1.0 - PRECISION_PUNTERO + ACELERACION) * factor)
+
+        # De fraccion de encuadre a pixeles de pantalla. Cada eje se escala con
+        # su propia dimension para alcanzar los bordes aunque la camara y la
+        # pantalla no compartan relacion de aspecto.
         self._x = recortar(self._x + fx * empuje * self.entrada.ancho,
                            self.entrada.x0, self.entrada.x0 + self.entrada.ancho - 1)
         self._y = recortar(self._y + fy * empuje * self.entrada.alto,
@@ -566,60 +637,94 @@ def crear_detector() -> vision.HandLandmarker:
     return vision.HandLandmarker.create_from_options(opciones)
 
 
-def _intentar_camara(indice: int) -> cv2.VideoCapture | None:
-    """Abre una camara y comprueba que entrega imagen de verdad.
+_SIN_CAMARA = (
+    "No se encontro ninguna camara que funcione.\n"
+    "- Revisa Configuracion > Privacidad > Camara y permite el acceso a las "
+    "aplicaciones de escritorio.\n"
+    "- Si otra app la tiene en EXCLUSIVA (apps antiguas), cierrala; con Zoom o "
+    "Teams (que comparten via Windows) no deberia hacer falta.\n"
+    "- Si tienes varias camaras, fija INDICE_CAMARA a mano en el codigo."
+)
 
-    Que `isOpened()` diga True no basta: hay dispositivos fantasma que abren
-    pero no dan ni un frame. Por eso se lee uno antes de darla por buena.
-    """
-    cap = cv2.VideoCapture(indice, cv2.CAP_DSHOW)
-    if not cap.isOpened():
-        cap.release()
-        return None
-
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, ANCHO)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, ALTO)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # menos latencia: no acumular frames
-
-    ok, frame = cap.read()
-    if not ok or frame is None:
-        cap.release()
-        return None
-    return cap
+RUTA_PREF_CAMARA = carpeta_base() / "config_camara.json"
 
 
 def abrir_camara() -> cv2.VideoCapture:
-    """Abre la webcam, buscandola sola si `INDICE_CAMARA` es None.
+    """Detecta las camaras, deja elegir en un menu y abre la elegida.
 
-    Se usa el backend DirectShow, que en Windows arranca mucho mas rapido.
+    - `INDICE_CAMARA` fijado a mano se abre directo, sin detectar ni preguntar.
+    - Una preferencia guardada valida se reutiliza sin molestar.
+    - Con varias camaras (o `MENU_CAMARA_SIEMPRE`) se abre el menu con miniaturas.
     """
-    indices = ([INDICE_CAMARA] if INDICE_CAMARA is not None
-               else range(CAMARAS_A_PROBAR))
+    orden = camara.backends(COMPARTIR_CAMARA)
 
-    for indice in indices:
-        cap = _intentar_camara(indice)
+    # Atajos que evitan explorar todas las camaras (mas rapido al arrancar).
+    if INDICE_CAMARA is not None:
+        cap, backend = camara.abrir(INDICE_CAMARA, ANCHO, ALTO, orden)
         if cap is not None:
-            real_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            real_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            print(f"Camara {indice} lista ({real_w}x{real_h}).")
+            print(f"Camara {INDICE_CAMARA} ({camara.nombre_backend(backend)}).")
             return cap
-        print(f"Camara {indice}: no disponible.")
+        raise SystemExit(f"La camara fijada (INDICE_CAMARA={INDICE_CAMARA}) no "
+                         f"responde.\n{_SIN_CAMARA}")
 
-    raise SystemExit(
-        "No se encontro ninguna camara que funcione.\n"
-        "- Comprueba que no la este usando otra aplicacion (Teams, Zoom...).\n"
-        "- Revisa Configuracion > Privacidad > Camara y permite el acceso a "
-        "las aplicaciones de escritorio.\n"
-        "- Si tienes varias camaras, fija INDICE_CAMARA a mano en el codigo."
-    )
+    guardado = camara.cargar_preferencia(RUTA_PREF_CAMARA)
+    if guardado is not None and not MENU_CAMARA_SIEMPRE:
+        cap, backend = camara.abrir(guardado, ANCHO, ALTO, orden)
+        if cap is not None:
+            print(f"Camara {guardado} recordada ({camara.nombre_backend(backend)}).")
+            return cap
+        # La camara guardada ya no esta: se ignora y se detecta de nuevo.
+
+    print("Detectando camaras...")
+    camaras = camara.listar(ANCHO, ALTO, orden, CAMARAS_A_PROBAR)
+    if not camaras:
+        raise SystemExit(_SIN_CAMARA)
+    for c in camaras:
+        print(f"  [{c.indice}] {c.nombre}  {c.ancho}x{c.alto}  "
+              f"{camara.nombre_backend(c.backend)}")
+
+    indice, recordar = camara.elegir_indice(
+        camaras, forzado=None, guardado=guardado,
+        menu_siempre=MENU_CAMARA_SIEMPRE, dialogo=camara.menu_grafico)
+    if indice is None:
+        raise SystemExit("No se eligio ninguna camara.")
+    if recordar:
+        camara.guardar_preferencia(RUTA_PREF_CAMARA, indice)
+
+    cap, backend = camara.abrir(indice, ANCHO, ALTO, orden)
+    if cap is None:
+        raise SystemExit(_SIN_CAMARA)
+    print(f"Usando camara {indice} ({camara.nombre_backend(backend)}).")
+    return cap
 
 
 # --------------------------------------------------------------------------- #
 # Programa principal
 # --------------------------------------------------------------------------- #
 
-def main() -> None:
+def aplicar_config(cfg: dict) -> dict:
+    """Vuelca la configuracion del launcher en los ajustes de la deteccion.
+
+    La sensibilidad y las preferencias de camara son globales del modulo (las
+    leen `ControlPuntero` y `abrir_camara`), asi que se sobreescriben aqui.
+    Devuelve el mapa forma -> accion.
+    """
+    global GANANCIA_PUNTERO, ACELERACION
+    global INDICE_CAMARA, COMPARTIR_CAMARA, MENU_CAMARA_SIEMPRE
+
+    GANANCIA_PUNTERO = cfg["sensibilidad"]["ganancia"]
+    ACELERACION = cfg["sensibilidad"]["aceleracion"]
+    INDICE_CAMARA = cfg["camara"]["indice"]
+    COMPARTIR_CAMARA = cfg["camara"]["compartir"]
+    MENU_CAMARA_SIEMPRE = cfg["camara"]["menu_siempre"]
+    return dict(cfg["gestos"])
+
+
+def main(cfg: dict | None = None) -> None:
+    if cfg is None:
+        cfg = config.cargar(carpeta_base() / config.RUTA_DEFECTO_NOMBRE)
+    mapa = aplicar_config(cfg)     # forma de la mano -> accion elegida
+
     cap = abrir_camara()          # lanza SystemExit con ayuda si no hay ninguna
 
     entrada = EntradaWindows(simular=SIMULAR_ENTRADA,
@@ -662,40 +767,39 @@ def main() -> None:
                 ts_ms = int((time.perf_counter() - t_inicio) * 1000)
                 resultado = detector.detect_for_video(imagen, ts_ms)
 
-                # --- Dibujo y clasificacion -------------------------------- #
-                # Solo se dibuja el esqueleto: ninguna indicacion escrita en
-                # pantalla; los gestos estan documentados en el README.
-                gesto_principal = DESCONOCIDO
+                # --- Clasificacion: forma -> accion segun la config -------- #
+                # Solo se dibuja el esqueleto; ninguna indicacion escrita.
+                accion_principal = NADA
                 pts_principal = None            # landmarks de la primera mano
 
                 if resultado.hand_landmarks:
                     for i, landmarks in enumerate(resultado.hand_landmarks):
                         pts = a_pixeles(landmarks, ancho, alto)
-                        gesto = clasificar_gesto(dedos_extendidos(pts), pts)
+                        forma = clasificar_gesto(dedos_extendidos(pts), pts)
                         if i < len(suavizadores):
-                            gesto = suavizadores[i].actualizar(gesto)
+                            forma = suavizadores[i].actualizar(forma)
+                        accion = mapa.get(forma, NADA)
                         if i == 0:
-                            gesto_principal, pts_principal = gesto, pts
-                        dibujar_esqueleto(frame, pts, COLORES[gesto])
+                            accion_principal, pts_principal = accion, pts
+                        dibujar_esqueleto(frame, pts, COLOR_ACCION.get(accion))
                 else:
                     for s in suavizadores:
                         s.actualizar(DESCONOCIDO)
 
-                # --- Gesto mantenido: encender / apagar el control ---------- #
-                if accion_control.actualizar(gesto_principal)[0]:
+                # --- Acciones mantenidas: on/off y clic derecho ------------- #
+                if accion_control.actualizar(accion_principal)[0]:
                     control = not control
                     puntero.reiniciar()
                     zoom.reiniciar()
                     clics.soltar()
 
-                # Clic derecho: hay que mantener el pulgar arriba un instante,
-                # para que el paso fugaz por esa forma al abrir o cerrar la
-                # mano no dispare un clic.
-                if accion_clic_der.actualizar(gesto_principal)[0] and control:
+                # El clic derecho se mantiene un instante para que el paso fugaz
+                # por esa forma al abrir o cerrar la mano no dispare un clic.
+                if accion_clic_der.actualizar(accion_principal)[0] and control:
                     clics.clic_derecho()
 
-                # --- Puntero (apuntar) y zoom (abrir/cerrar la mano) -------- #
-                direccion_zoom = DIR_ZOOM.get(gesto_principal, 0)
+                # --- Puntero, clics y zoom segun la accion ------------------ #
+                direccion_zoom = DIR_ZOOM.get(accion_principal, 0)
 
                 if not control or pts_principal is None:
                     puntero.reiniciar()
@@ -703,9 +807,9 @@ def main() -> None:
                     clics.soltar()          # nunca dejar el boton hundido
                     estela_camara.clear()
 
-                elif gesto_principal in GESTOS_PUNTERO:
+                elif accion_principal in ACCIONES_PUNTERO:
                     zoom.reiniciar()
-                    pulsando = gesto_principal == CLIC_IZQ
+                    pulsando = accion_principal == CLIC_IZQ
                     punta = pts_principal[INDICE_TIP]
 
                     # Con el boton pulsado el cursor se congela (clic limpio)
@@ -714,7 +818,7 @@ def main() -> None:
                     pos = puntero.actualizar(punta, ancho, alto,
                                              mover=not pulsando or arrastrando)
 
-                    color = COLORES[gesto_principal]
+                    color = COLOR_ACCION[accion_principal]
                     estela_camara.append(punta)
                     dibujar_estela(frame, estela_camara, color)
                     dibujar_puntero(frame, punta, color)

@@ -1,38 +1,55 @@
-# Detector de gestos de mano (MediaPipe + OpenCV)
+# Control por gestos de mano (MediaPipe + OpenCV)
 
-Detección en tiempo real desde la webcam, con esqueleto de mano superpuesto.
-El dedo **mueve el cursor real de Windows** (air-mouse relativo) y abrir/cerrar
-la mano **hace zoom en la ventana activa**. Todo se maneja con las manos.
+Controla Windows con la webcam: el dedo **mueve el cursor real** (air-mouse
+relativo), un gesto **hace clic**, y abrir/cerrar la mano **hace zoom con la Lupa
+de Windows**. Se maneja todo con una **aplicación con ventana** (no consola):
+desde ahí eliges cámara, editas qué hace cada gesto, cambias el tema y arrancas.
 
-## Chuleta de gestos
+## La aplicación
 
-> **En pantalla no aparece ninguna indicación.** Solo se ve el esqueleto de la
-> mano y la diana del puntero. Esta tabla es la única referencia — tenla a mano
-> las primeras veces.
+Doble clic en **`Gestos.vbs`** (o `iniciar.bat`) y se abre la ventana:
 
-Los gestos se distinguen por el **número de dedos estirados**. Nada de juntar
-puntas ni medir separaciones: cuentas dedos y ya está.
+![launcher](launcher_oscuro.png)
 
-| Gesto | Qué hace |
+- **Editor de gestos** — cada forma de la mano tiene un desplegable para elegir
+  qué hace. ¿Prefieres el clic derecho en "3 dedos"? Lo cambias ahí.
+- **Sensibilidad** — velocidad y aceleración del cursor con dos deslizadores.
+- **Cámara** — compartir con otras apps y si preguntar qué cámara en cada arranque.
+- **Tema claro / oscuro** — botón arriba a la derecha.
+- **Iniciar / Detener** — arranca la detección en una ventana aparte; púlsalo otra
+  vez para pararla.
+
+Todo se guarda en `config.json` (junto al programa) al pulsar **Guardar** o
+**Iniciar**. **Restablecer** vuelve a los valores de fábrica.
+
+## Chuleta de gestos (configuración por defecto)
+
+Los gestos se distinguen por el **número de dedos estirados** — cuentas dedos y
+ya está. Este es el mapa por defecto; **todo es editable** en la aplicación.
+
+| Gesto | Qué hace por defecto |
 |:---:|---|
 | ☝️ **1 dedo** (índice) | **mueve el cursor** de Windows |
 | ✌️ **2 dedos** (índice + medio) | **clic izquierdo** — mantén y mueve para **arrastrar** |
+| 🖖 **3 dedos** | *(sin asignar — libre para lo que quieras)* |
 | 👍 **pulgar arriba** | **clic derecho** |
 | ✋ **mano abierta** | **acercar** con la Lupa, sostenido |
 | ✊ **puño** | **alejar** con la Lupa, sostenido |
 | 🤙 **pulgar + meñique** | mantén **1,2 s**: activa/desactiva el control |
 
-**Salir:** tecla `q`/`ESC` o el botón X de la ventana.
-
-Ningún gesto usa el **anular**, ni te obliga a mover el **meñique por separado**
-— son los dedos más difíciles de aislar. El pulgar da igual al apuntar y al
-hacer clic: `1 dedo` y `1 dedo + pulgar` (la "L") hacen lo mismo. Cualquier otra
-forma no hace nada.
+En la ventana de detección **no aparece ningún texto**: solo el esqueleto de la
+mano y la diana del puntero. **Salir de la detección:** tecla `q`/`ESC` o el
+botón X. El pulgar da igual al apuntar y al hacer clic: `1 dedo` y la "L" hacen
+lo mismo.
 
 ## Archivos
 
+- [launcher.py](launcher.py) — la aplicación con ventana (GUI): editor, tema, arranque
 - [gestos_manos.py](gestos_manos.py) — detección, clasificación y bucle principal
 - [control_windows.py](control_windows.py) — movimiento del cursor y zoom (SendInput)
+- [camara.py](camara.py) — detección de cámaras, menú de selección y compartir
+- [config.py](config.py) — guardar/cargar `config.json` (gestos, tema, sensibilidad)
+- `Gestos.vbs` — abre la GUI sin consola; `iniciar.bat` es la alternativa
 
 ## Instalación
 
@@ -49,7 +66,15 @@ el Python del sistema.
 
 ## Ejecución
 
-Doble clic en **`iniciar.bat`**, o desde la terminal:
+Doble clic en **`Gestos.vbs`** (abre la ventana, sin consola). En la GUI pulsa
+**Iniciar**. También `iniciar.bat`, o desde la terminal:
+
+```bash
+.venv\Scripts\python.exe launcher.py
+```
+
+Para arrancar la detección directamente, sin pasar por la GUI (usa `config.json`
+o los valores por defecto):
 
 ```bash
 .venv\Scripts\python.exe gestos_manos.py
@@ -57,10 +82,48 @@ Doble clic en **`iniciar.bat`**, o desde la terminal:
 
 Con el control activado (arranca en ON), levanta **un dedo** y mueve la mano: el
 **cursor de Windows** se desplaza. Sobre la imagen de la cámara verás la diana y
-una estela del dedo como referencia; su longitud se ajusta con `LARGO_ESTELA`.
+una estela del dedo. La ventana de detección no muestra texto: si no recuerdas un
+gesto, mira la [chuleta](#chuleta-de-gestos-configuración-por-defecto).
 
-La ventana no muestra texto alguno — ni FPS, ni nombres de gestos, ni ayuda. Si
-no recuerdas un gesto, mira la [chuleta](#chuleta-de-gestos) de arriba.
+## Elegir la cámara
+
+Al arrancar, el programa **detecta las cámaras conectadas**. Si hay más de una,
+abre un menú con una **miniatura de cada una** para que pulses la que quieras:
+
+- Marca **"Recordar mi elección"** y no volverá a preguntar (se guarda en
+  `config_camara.json`, junto al programa). Bórralo para que vuelva a preguntar.
+- Con una sola cámara no molesta: la usa directamente.
+- Para forzar una fija `INDICE_CAMARA = 0` (o el número que sea) en el código, y
+  se salta el menú. Para que el menú salga **siempre**, `MENU_CAMARA_SIEMPRE = True`.
+- Los **nombres reales** ("Logitech C920"…) aparecen si instalas `pygrabber`
+  (`pip install pygrabber`); si no, se ven como "Camara 0", "Camara 1"…
+
+En portátiles esto resuelve un lío habitual: la cámara de infrarrojos de Windows
+Hello suele ocupar el índice 0, así que la webcam normal no es la primera.
+
+**Detección rápida.** El sondeo de cámaras usa **DirectShow**, que abre en
+milisegundos y falla al instante en índices vacíos; MSMF podía tardar 1-2 s *por
+índice*, así que buscar en 4 posiciones se hacía eterno. Además el sondeo no fija
+la resolución (renegociarla es lo lento) y lee un solo frame, que se reaprovecha
+como miniatura. Solo la cámara que **eliges** se abre luego con MSMF, para poder
+compartirla. Si con DirectShow no aparece ninguna, se reintenta con MSMF.
+
+## Compartir la cámara con otras apps
+
+Por defecto la cámara se abre en modo **compartido**: puedes tenerla en uso a la
+vez en Zoom, Teams, OBS, etc. Esto se apoya en el **Frame Server de Windows**, al
+que se accede con el backend Media Foundation (`CAP_MSMF`) en lugar de DirectShow.
+
+Límites honestos:
+
+- Funciona cuando el driver de la cámara soporta el Frame Server — lo normal en
+  webcams UVC modernas y en Windows 10 (1809+) / 11.
+- Si **otra app la tiene en exclusiva** (algunas apps antiguas de DirectShow),
+  no habrá forma de compartir: es una limitación del sistema, no del programa.
+- El menú indica con qué backend se abrió cada cámara: *compartida (MSMF)* o
+  *exclusiva (DirectShow)*.
+
+Para volver al modo exclusivo (abre algo más rápido) pon `COMPARTIR_CAMARA = False`.
 
 Teclas de respaldo (solo funcionan si la ventana de la cámara tiene el foco):
 `q`/`ESC` salir, `c` activar o desactivar el control.
@@ -68,44 +131,23 @@ Teclas de respaldo (solo funcionan si la ventana de la cámara tiene el foco):
 El modelo `hand_landmarker.task` (~7 MB) ya está descargado en la carpeta; si se
 borra, el script lo vuelve a bajar solo en el siguiente arranque.
 
-## Crear un ejecutable (.exe)
+## Repartir a otros equipos
 
-Para tener la app como programa independiente que se abre con doble clic —sin
-terminal, sin `.venv`, en su propia ventana— se empaqueta con PyInstaller:
+La forma recomendada **no es un ejecutable**, sino el **launcher**: copia la
+carpeta del proyecto y ejecuta `Gestos.vbs`. Solo necesita Python instalado (con
+`iniciar.bat` se crea el entorno). Es lo que pediste: un lanzador ligero, no un
+programa de 265 MB que hay que instalar.
 
-```bash
-construir_exe.bat
-```
+Ventajas frente al `.exe`:
 
-Genera `dist\GestosManos\GestosManos.exe`. Ese es el archivo que abres; la
-carpeta que lo acompaña (`_internal`, ~265 MB por los binarios de MediaPipe)
-tiene que viajar **junto** al `.exe`: para llevártelo a otro PC, copia la carpeta
-`GestosManos` entera, no solo el `.exe`. No necesita Python instalado en el
-equipo de destino.
+- **Ligero** — unos pocos KB de código, no cientos de MB empaquetados.
+- **Sin bloqueos** — Windows (Smart App Control / SmartScreen) bloquea los `.exe`
+  sin firmar. Un script de Python que ejecuta tu propio Python no se bloquea.
+- **Sin consola** — `Gestos.vbs` abre la GUI directamente, sin ventana negra.
 
-Comprobar que un `.exe` quedó bien empaquetado, sin necesidad de cámara:
-
-```bash
-dist\GestosManos\GestosManos.exe --selftest
-```
-
-Debe imprimir *"OK: mediapipe cargo el modelo y proceso un frame."*
-
-### Ventana con o sin consola
-
-Tal cual, al abrirlo aparecen **dos ventanas**: una consola negra (donde se ven
-mensajes y errores) y la ventana de la cámara. Si prefieres que salga **solo la
-ventana de la cámara**, edita `gestos_manos.spec`, cambia `console=True` por
-`console=False` y vuelve a ejecutar `construir_exe.bat`. Ojo: sin consola, si
-algo falla no verás el motivo, así que conviene dejar la consola hasta
-comprobar que todo va fino.
-
-Notas de empaquetado que resolví por el camino: MediaPipe necesita que se
-recojan sus binarios y datos (`collect_all` en el `.spec`) e importa
-`matplotlib` por dentro (no se puede excluir aunque el código no lo use); y el
-modelo `hand_landmarker.task` se copia junto al `.exe` porque PyInstaller lo
-metería en `_internal`, donde el programa no lo busca. Si aun así faltara, se
-descarga solo en el primer arranque.
+Sigue existiendo `construir_exe.bat` (empaqueta la detección con PyInstaller)
+como opción heredada, pero **no es la vía recomendada**: genera un ejecutable sin
+firmar que Windows 11 con Smart App Control activo bloquea al ejecutarse.
 
 ## El puntero: air-mouse relativo (mueve el cursor real)
 
@@ -132,42 +174,52 @@ encuadre entero equivale a cruzar 2 pantallas"* — y eso vale igual en un
 portátil de 1366×768 que en un monitor 4K, y con una webcam de 640×480 o de
 1080p.
 
-### Ajustar la sensibilidad
+### Precisión: fino cerca, rápido lejos
 
-Cambia **solo `GANANCIA_PUNTERO`**. Esta tabla dice qué porcentaje de la pantalla
-recorre el cursor según lo que muevas la mano (100 % = llegas al borde):
+El cursor tiene **precisión Y alcance** a la vez, con una curva de ganancia como
+la aceleración del ratón de Windows:
 
-| `GANANCIA_PUNTERO` | gesto corto<br>(15 % del encuadre) | gesto medio<br>(25 %) | barrido<br>(50 %) |
-|:---:|:---:|:---:|:---:|
-| 1.0 | 17 % | 30 % | 70 % |
-| 1.3 | 23 % | 39 % | 91 % |
-| 1.6 | 28 % | 48 % | 100 % |
-| **2.0** ← actual | **35 %** | **59 %** | **100 %** |
-| 2.5 | 43 % | 74 % | 100 % |
-| 3.0 | 52 % | 89 % | 100 % |
-| 4.0 | 69 % | 100 % | 100 % |
+- **Movimiento lento** → el cursor avanza poco (ganancia efectiva ~1,0): puedes
+  apuntar a cosas pequeñas sin pasarte.
+- **Movimiento rápido** → avanza mucho (ganancia efectiva ~4,8): cruzas la
+  pantalla de un manotazo.
 
-Si el cursor se te queda corto, sube a 2.5 o 3.0. Si se te escapa y no puedes
-afinar, baja a 1.6. Por encima de 3.0 cuesta apuntar a cosas pequeñas.
+Además, la punta del dedo pasa por un **suavizado adaptativo** (estilo filtro
+1-euro): filtra mucho cuando la mano casi no se mueve, quitando el temblor del
+landmark, y casi nada en gestos rápidos, sin añadir retraso. Con la mano quieta,
+el cursor apenas deriva un par de píxeles.
 
-Antes estaba en píxeles crudos, y eso hacía que la app fuera **disparada en una
-pantalla pequeña y lentísima en una 4K**, además de cambiar de tacto según la
-resolución de la webcam. Hay un test que barre el dedo un 25 % del encuadre en
-4 pantallas y 4 webcams distintas y comprueba que el cursor recorre siempre el
-mismo 59 % de la pantalla (dispersión < 0,05 %).
+**El movimiento lento se acumula, no se pierde.** Un gesto lento reparte muy
+pocos píxeles por frame, y cada uno cae por debajo de la zona muerta. Si se
+descartaran, el cursor **no se movería en absoluto** por mucho que arrastraras el
+dedo — justo al apuntar con cuidado. Por eso el desplazamiento se guarda en un
+residuo que se acumula hasta dar un paso. El ruido aleatorio se cancela solo al
+sumarse, así que esto no reintroduce temblor.
 
-Lo mismo vale para `ZONA_MUERTA` y `UMBRAL_ARRASTRE`: también son fracciones del
-encuadre, no píxeles.
+Ajusta la sensibilidad general con el **deslizador "Velocidad"** de la GUI
+(`GANANCIA_PUNTERO`): súbelo si el cursor se queda corto, bájalo si se escapa.
+"Aceleración" controla cuánto empuje extra dan los gestos rápidos.
 
-El movimiento se inyecta con `SendInput` en coordenadas absolutas del escritorio
-virtual, así que funciona bien con varios monitores y con escalado de pantalla
-(el proceso se declara *DPI-aware*). Sobre la imagen de la cámara se dibujan la
-diana y la estela como referencia.
+### Detalles
 
-> **Nota:** una versión anterior dibujaba un puntero propio en una ventana
-> transparente que cubría todo el escritorio. Daba problemas (se veía como una
-> capa opaca que "apagaba" la pantalla), así que se eliminó por completo: ahora
-> se mueve directamente el cursor del sistema.
+- **Una sola mano** (`MAX_MANOS = 1`): así el puntero no salta a otra mano que
+  aparezca en el encuadre. Antes, con dos manos, MediaPipe cambiaba el orden
+  entre frames y el cursor se iba a la mano equivocada.
+- **Rechazo de saltos**: si la punta "teletransporta" más de `SALTO_MAX` (35 %
+  del encuadre) en un frame —un glitch, o que la detección cambie de mano— el
+  puntero se reancla ahí y **no mueve el cursor**, evitando el latigazo.
+- **Portable**: la sensibilidad va en fracciones del encuadre, no en píxeles, así
+  que el tacto es idéntico en cualquier webcam y monitor (un test barre el dedo
+  en 4 pantallas y 4 webcams y el recorrido relativo coincide, dispersión
+  < 0,05 %). Lo mismo para `ZONA_MUERTA` y `UMBRAL_ARRASTRE`.
+- El movimiento se inyecta con `SendInput` en coordenadas absolutas del
+  escritorio virtual: va bien con varios monitores y con escalado (*DPI-aware*).
+- **Si Windows rechaza la entrada sintética** (una ventana abierta *como
+  administrador* en primer plano, una política de seguridad o un antivirus
+  pueden bloquearla), la app **avisa una vez y sigue funcionando** en lugar de
+  cerrarse. Si el cursor no se mueve pero la mano sí se detecta, mira la consola:
+  ahí aparece el aviso. Suele arreglarse cerrando o desenfocando la ventana
+  elevada.
 
 ## Los clics
 
@@ -186,7 +238,7 @@ Dos detalles para que no falle:
 
 **El clic no arrastra el cursor sin querer.** Al pulsar, el cursor se **congela**
 en el sitio, así que el clic cae justo donde apuntabas. Solo cuando mueves la
-mano más de `UMBRAL_ARRASTRE` (16 px) pasa a arrastrar de verdad.
+mano más de `UMBRAL_ARRASTRE` (2 % del encuadre) pasa a arrastrar de verdad.
 
 **No hay clics accidentales al abrir o cerrar la mano.** Al pasar de puño a mano
 abierta los dedos cruzan un instante por "2" y por "solo pulgar". Contra eso hay
@@ -237,7 +289,9 @@ Todo está agrupado en el bloque *Configuración* al inicio de
 - `GANANCIA_PUNTERO` — sensibilidad del cursor; usa la
   [tabla de arriba](#ajustar-la-sensibilidad). `ACELERACION` — empuje extra en
   los gestos rápidos, para cruzar la pantalla de un manotazo.
-- `INDICE_CAMARA` — `None` busca la webcam sola; pon un número para forzar una.
+- `INDICE_CAMARA` — `None` detecta y abre el menú; un número fuerza una cámara.
+  `MENU_CAMARA_SIEMPRE`, `COMPARTIR_CAMARA` — ver
+  [Elegir la cámara](#elegir-la-cámara) y [Compartir la cámara](#compartir-la-cámara-con-otras-apps).
 - `UMBRAL_ARRASTRE` — cuánto hay que mover la mano para pasar de clic a
   arrastre. `ESTABILIDAD_CLIC_DER` — cuánto hay que mantener 👍.
 - `VENTANA_SUAVIZADO` — frames del voto mayoritario; subirlo da gestos más
@@ -263,10 +317,16 @@ respecto a la muñeca. Al no depender de coordenadas absolutas, funciona con la
 mano girada o inclinada y a cualquier distancia de la cámara.
 
 `clasificar_gesto()` es luego una simple consulta a la tabla `PATRONES`, que
-traduce la tupla `(pulgar, índice, medio, anular, meñique)` a un gesto. Todo el
-mapa de gestos cabe de un vistazo y no hay ni un umbral de distancia entre
-puntas. El único caso especial es 👍, que además exige que el pulgar apunte
-hacia arriba de verdad.
+traduce la tupla `(pulgar, índice, medio, anular, meñique)` a una **forma** de la
+mano (id estable: `un_dedo`, `dos_dedos`, `pulgar`…). No hay ni un umbral de
+distancia entre puntas; el único caso especial es 👍, que además exige que el
+pulgar apunte hacia arriba de verdad.
+
+La detección separa **forma** (lo que ve la cámara) de **acción** (lo que hace la
+app). El bucle mira `config.json` para saber qué acción tiene asignada cada forma
+— por eso el editor de la GUI puede recablear los gestos sin tocar el código. La
+config se sanea al cargarla: un archivo viejo, incompleto o manipulado nunca deja
+la detección con valores imposibles.
 
 `SuavizadorGesto` aplica un voto mayoritario sobre los últimos 5 frames para que
 el gesto no parpadee (y para que los estados intermedios al abrir o cerrar la
@@ -278,10 +338,14 @@ de repetir, para que un gesto largo no encadene disparos.
 Con pruebas automáticas, sin cámara:
 
 - Construcción del `HandLandmarker` y `detect_for_video` con el modelo real
-  (también empaquetado en el `.exe`, vía `--selftest`).
-- Los 10 patrones de dedos con landmarks sintéticos: cada número de dedos da el
-  gesto correcto, no hay patrones duplicados y ningún gesto de clic acaba
-  disparando zoom.
+  (vía `--selftest`).
+- Los patrones de dedos con landmarks sintéticos: cada número de dedos da la
+  **forma** correcta, no hay patrones duplicados, y con el mapa por defecto cada
+  forma cae en la acción esperada (y ninguna de puntero/clic dispara zoom).
+- **Config y GUI**: `config.json` se guarda y recarga sin perder nada; una config
+  corrupta, incompleta o con valores inválidos se repara a los defaults; y el
+  editor de la GUI hace round-trip (lo que pones en los desplegables, los
+  deslizadores y el tema es exactamente lo que se guarda).
 - Que **no queda ninguna indicación en pantalla**: ni una llamada a
   `cv2.putText`, ni contador de FPS, y las funciones de panel, etiqueta y barra
   de progreso están eliminadas (el dibujo del esqueleto y la diana se mantienen).
@@ -289,6 +353,14 @@ Con pruebas automáticas, sin cámara:
   dirección correcta, el embrague no salta al recolocar, la zona muerta ignora el
   temblor y nunca se sale del escritorio virtual (incluido un segundo monitor con
   coordenadas negativas).
+- **Precisión y robustez del puntero**: la ganancia efectiva es baja en
+  movimientos finos (~1,2) y alta en rápidos (~4,8), el avance por frame crece
+  con la velocidad, un dedo con ruido en reposo apenas mueve el cursor (< 25 px),
+  y un **salto imposible entre frames** (la otra mano) se reancla sin mover el
+  cursor mientras que un gesto rápido plausible sí mueve.
+- **Regresión del movimiento lento**: arrastrar el dedo muy despacio (0,3 px por
+  frame) mueve el cursor y da un recorrido comparable al de un gesto normal.
+  Antes daba **0 px**: el gesto se perdía entero bajo la zona muerta.
 - Zoom por abrir/cerrar la mano: primer paso inmediato, cadencia mientras se
   mantiene, inversión instantánea palma↔puño y corte al soltar.
 - **Lupa**: arranca cerrada, acercar la marca como abierta, alejar no la abre,
@@ -299,6 +371,13 @@ Con pruebas automáticas, sin cámara:
   1080p, QHD y 4K, y con webcams de 640×480 a 1080p (dispersión < 0,05 %); el
   cursor no se sale por el borde de un monitor en coordenadas negativas; y
   ningún archivo distribuible contiene rutas absolutas.
+- **Cámara**: `compartir` prueba MSMF antes que DirectShow para el capture real;
+  la miniatura se codifica a PNG válido; el menú se salta con una sola cámara, se
+  respeta una preferencia guardada, `MENU_CAMARA_SIEMPRE` la fuerza,
+  `INDICE_CAMARA` manda sobre todo, y un `config_camara.json` corrupto se ignora.
+- **Detección rápida**: el sondeo usa DirectShow (no MSMF), no fija resolución,
+  hace una sola lectura por cámara, etiqueta con el backend de uso real, y
+  reintenta con MSMF solo si DirectShow no ve ninguna.
 - **Clics**: 2 dedos pulsan y sueltan el botón; un temblor pequeño sigue siendo
   clic y un movimiento claro pasa a arrastre; el cursor se congela durante el
   clic; el clic derecho pulsa y suelta sin quedarse abajo y no se dispara al
@@ -309,11 +388,15 @@ Con pruebas automáticas, sin cámara:
 - **Movimiento real del cursor**: `mover_cursor` coloca el cursor de Windows en
   el punto pedido (llamada real a `SendInput`, verificada con `GetCursorPos` y
   devolviendo luego el cursor a su sitio).
-- El dispatch del bucle: apuntar mueve el cursor, mano abierta/puño hacen zoom,
-  y con el control apagado no se mueve nada.
+- El dispatch del bucle, ahora por **acción**: `mover` desplaza el cursor,
+  `clic_izq` pulsa, `zoom_in`/`zoom_out` hacen zoom, y con el control apagado no
+  se mueve nada.
 - `sizeof(INPUT)` correcto en 64 bits.
 
-Sin cámara, **109 comprobaciones en verde** (50 gestos/clics/lupa + 31
-puntero/cursor + 12 portabilidad + 9 dispatch + 7 patrones). Sin probar: la
-webcam en vivo y el efecto real de la Lupa y los clics sobre una aplicación
-concreta. Eso hay que ejecutarlo delante de la cámara.
+Sin cámara, **181 comprobaciones en verde** (62 gestos/clics/lupa + 32
+puntero/cursor + 25 cámara/menú/arranque + 21 config/GUI + 12 portabilidad
++ 12 precisión + 9 dispatch + 8 formas), más renders del launcher (temas claro y
+oscuro) y del menú de cámaras. Sin probar: la webcam en vivo, el efecto real de la Lupa y los
+clics, y que **tu** cámara concreta acepte el modo compartido (depende del
+driver). Eso hay que ejecutarlo delante de la
+cámara.

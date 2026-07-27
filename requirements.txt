@@ -1,3 +1,8 @@
 # Verificado con Python 3.13 en Windows 11: opencv-python 5.0.0 + mediapipe 0.10.35
 opencv-python>=4.8
 mediapipe>=0.10.14
+
+# Opcional: nombres reales de las camaras en el menu de seleccion.
+# Sin esto se muestran como "Camara 0", "Camara 1"... (todo lo demas funciona).
+# pygrabber>=0.2
+
