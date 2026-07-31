@@ -104,6 +104,9 @@ VENTANA_SUAVIZADO = 5      # nº de frames para el voto mayoritario del gesto
 # --- Control por gestos ---------------------------------------------------- #
 CONTROL_ACTIVO = True      # estado inicial del control
 SIMULAR_ENTRADA = False    # True = solo imprime las acciones, no toca el sistema
+ESPEJO = True              # ver la camara en espejo (lo natural para el usuario)
+MOSTRAR_VENTANA = True     # False = detectar sin ventana de camara
+SONIDO = True              # pitido al hacer clic o lanzar un atajo
 
 # Gesto mantenido para activar/desactivar el control (pulgar + menique):
 ESPERA_CONTROL = 1.2       # segundos
@@ -786,13 +789,35 @@ def aplicar_config(cfg: dict) -> dict:
     """
     global GANANCIA_PUNTERO, ACELERACION
     global INDICE_CAMARA, COMPARTIR_CAMARA, MENU_CAMARA_SIEMPRE
+    global ANCHO, ALTO, ESPEJO, LARGO_ESTELA, MOSTRAR_VENTANA
+    global ESPERA_ATAJO, ESPERA_CONTROL, SONIDO
 
     GANANCIA_PUNTERO = cfg["sensibilidad"]["ganancia"]
     ACELERACION = cfg["sensibilidad"]["aceleracion"]
     INDICE_CAMARA = cfg["camara"]["indice"]
     COMPARTIR_CAMARA = cfg["camara"]["compartir"]
     MENU_CAMARA_SIEMPRE = cfg["camara"]["menu_siempre"]
+
+    d = cfg["deteccion"]
+    ANCHO, ALTO = (int(v) for v in d["resolucion"].split("x"))
+    ESPEJO = d["espejo"]
+    MOSTRAR_VENTANA = d["mostrar_ventana"]
+    LARGO_ESTELA = 26 if d["estela"] else 0
+    ESPERA_ATAJO = d["espera_atajo"]
+    ESPERA_CONTROL = d["espera_control"]
+    SONIDO = cfg["app"]["sonido"]
     return dict(cfg["gestos"])
+
+
+def pitido(agudo: bool = True) -> None:
+    """Aviso sonoro corto al hacer clic o lanzar un atajo (si esta activado)."""
+    if not SONIDO:
+        return
+    try:
+        import winsound
+        winsound.Beep(880 if agudo else 500, 40)
+    except (ImportError, RuntimeError):
+        pass                                # sin sonido no pasa nada grave
 
 
 def main(cfg: dict | None = None) -> None:
@@ -823,7 +848,8 @@ def main(cfg: dict | None = None) -> None:
                     print("Frame no valido; se corta la captura.")
                     break
 
-                frame = cv2.flip(frame, 1)      # efecto espejo
+                if ESPEJO:
+                    frame = cv2.flip(frame, 1)
                 alto, ancho = frame.shape[:2]
 
                 # --- Inferencia ------------------------------------------- #
@@ -872,6 +898,7 @@ def main(cfg: dict | None = None) -> None:
                 # por esa forma al abrir o cerrar la mano no dispare un clic.
                 if accion_clic_der.actualizar(accion_principal)[0] and control:
                     clics.clic_derecho()
+                    pitido()
 
                 # --- Puntero, clics y atajos segun la accion ---------------- #
                 # Cualquier accion que no gestione la app es un atajo de Windows
@@ -905,21 +932,27 @@ def main(cfg: dict | None = None) -> None:
                     puntero.reiniciar()
                     clics.soltar()
                     estela_camara.clear()
-                    atajos.actualizar(accion_principal)
+                    if atajos.actualizar(accion_principal):
+                        pitido(agudo=False)
                 else:
                     puntero.reiniciar()
                     atajos.reiniciar()
                     clics.soltar()
                     estela_camara.clear()
 
-                cv2.imshow(NOMBRE_VENTANA, frame)
+                if MOSTRAR_VENTANA:
+                    cv2.imshow(NOMBRE_VENTANA, frame)
+                    # Salir: tecla q/ESC o el boton X de la ventana.
+                    tecla = cv2.waitKey(1) & 0xFF
+                    if cv2.getWindowProperty(NOMBRE_VENTANA,
+                                             cv2.WND_PROP_VISIBLE) < 1:
+                        break
+                else:
+                    # Sin ventana no hay teclado ni X: se para desde el launcher.
+                    tecla = 255
+                    time.sleep(0.001)
 
-                # Salir: tecla q/ESC o el boton X de la ventana.
-                tecla = cv2.waitKey(1) & 0xFF
                 if tecla in (ord("q"), 27):     # 'q' o ESC
-                    break
-                if cv2.getWindowProperty(NOMBRE_VENTANA,
-                                         cv2.WND_PROP_VISIBLE) < 1:
                     break
                 if tecla == ord("c"):
                     control = not control

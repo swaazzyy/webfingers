@@ -53,14 +53,35 @@ lo mismo.
 - [gestos_manos.py](gestos_manos.py) — detección, clasificación y bucle principal
 - [control_windows.py](control_windows.py) — cursor, clics y atajos (SendInput)
 - [camara.py](camara.py) — detección de cámaras, menú de selección y compartir
-- [config.py](config.py) — `config.json`: gestos, atajos propios, tema, sensibilidad
+- [config.py](config.py) — `config.json`: gestos, atajos propios, tema, ajustes
 - [grabador.py](grabador.py) — captura la combinación de teclas que grabas
+- [idiomas.py](idiomas.py) — textos de la interfaz (español / inglés)
+- [sistema.py](sistema.py) — arranque con Windows y accesos directos
+- [instalador.py](instalador.py) — asistente de instalación
 - `Gestos.vbs` — abre la GUI sin consola; `iniciar.bat` es la alternativa
 
 ## Instalación
 
-Funciona en cualquier PC con Windows y Python 3.9–3.13. Desde la carpeta del
-proyecto:
+### Con el instalador (recomendado)
+
+Ejecuta **`InstalarControlPorGestos.exe`** (10 MB, un solo archivo):
+
+![instalador](instalador.png)
+
+Te pregunta **idioma**, **carpeta de instalación** y qué accesos crear. Instala
+en `%LOCALAPPDATA%\ControlPorGestos`, así que **no necesita permisos de
+administrador**. Reinstalar encima **conserva tus ajustes**.
+
+Al terminar tendrás acceso directo en el Escritorio y en el menú Inicio.
+
+> **Windows puede bloquear el `.exe` la primera vez** porque no está firmado
+> digitalmente (firmar cuesta dinero y requiere un certificado). Si sale
+> SmartScreen: *Más información* → *Ejecutar de todas formas*. Si lo bloquea
+> Smart App Control: clic derecho → *Propiedades* → marcar *Desbloquear*.
+
+### Desde el código
+
+Funciona en cualquier PC con Windows y Python 3.9–3.13:
 
 ```bash
 py -m venv .venv && .venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -69,6 +90,40 @@ py -m venv .venv && .venv\Scripts\python.exe -m pip install -r requirements.txt
 Si no tienes Python, instálalo desde [python.org](https://www.python.org/downloads/).
 `iniciar.bat` también funciona sin entorno virtual: si no encuentra `.venv`, usa
 el Python del sistema.
+
+### Construir los ejecutables
+
+```bash
+construir_exe.bat
+```
+
+Genera `dist\ControlPorGestos\` (la aplicación) y
+`dist\InstalarControlPorGestos.exe` (el instalador, que lleva dentro todo lo que
+copia).
+
+## Ajustes
+
+El botón **⚙ Ajustes** de la esquina superior derecha abre el panel:
+
+![ajustes](ajustes.png)
+
+| Sección | Ajustes |
+|---|---|
+| **General** | Idioma (español / inglés) · Tema · **Iniciar con Windows** · Arrancar minimizado · Empezar a detectar al abrir · Preguntar antes de cerrar |
+| **Detección** | Ver la cámara en espejo · Dibujar la estela del dedo · Mostrar la ventana de la cámara · Resolución de captura |
+| **Tiempos** | Cuánto mantener un gesto para lanzar su atajo · Cuánto para activar/desactivar |
+| **Avisos** | Sonido al hacer clic o lanzar un atajo |
+| **Ayuda** | Abrir el proyecto en GitHub · Ver la guía de gestos · Abrir la carpeta de configuración |
+
+**Iniciar con Windows** se registra en `HKCU\…\Run` — la vía del usuario actual,
+que no pide permisos de administrador. La casilla lee el registro real al
+arrancar: si lo quitas por fuera (con el Administrador de tareas, por ejemplo),
+la app lo refleja en vez de mentir. Desmarcarla lo borra.
+
+El idioma se aplica **al instante**, sin reiniciar: los textos están indexados
+por clave y la ventana se retraduce en caliente. Si a un idioma le faltara
+alguna clave, se usa el español como respaldo en vez de mostrar el
+identificador crudo.
 
 ## Ejecución
 
@@ -435,6 +490,15 @@ Con pruebas automáticas, sin cámara:
   antes de la tecla lo excluye; Esc solo cancela pero Ctrl+Esc sí se graba; una
   tecla que la app no sabe reenviar se ignora; y **todo lo grabado se puede
   volver a enviar**.
+- **Instalador**: instala de verdad en una carpeta temporal, copia todos los
+  archivos, guarda el idioma elegido y **reinstalar encima conserva los ajustes**.
+- **Ajustes**: los nuevos (idioma, espejo, estela, resolución, tiempos, sonido)
+  sobreviven a guardar/cargar, los valores imposibles se corrigen, y **llegan de
+  verdad a la detección** (se comprueba que cambian sus variables internas).
+- **Idiomas**: ningún idioma deja claves sin traducir, uno desconocido cae al
+  español y una clave inexistente no revienta.
+- **Arranque con Windows**: se activa y desactiva en el registro de verdad, es
+  idempotente, y la prueba **restaura el estado que tenía tu equipo**.
 - **Atajos propios**: sobreviven a guardar/cargar, se asignan a un gesto, se
   resuelven sus teclas, aparecen en su grupo del menú, y un archivo con basura
   (teclas inventadas, sin nombre, lista vacía) se descarta entero.
@@ -466,7 +530,8 @@ Con pruebas automáticas, sin cámara:
   se mueve nada.
 - `sizeof(INPUT)` correcto en 64 bits.
 
-Sin cámara, **233 comprobaciones en verde** (71 gestos/clics/atajos + 35
+Sin cámara, **275 comprobaciones en verde** (71 gestos/clics/atajos + 42
+instalador/ajustes/idiomas + 35
 config/GUI/atajos propios + 32
 puntero/cursor + 25 cámara/menú/arranque + 21 config/GUI + 12 portabilidad
 + 12 precisión + 9 dispatch + 8 formas), más renders del launcher (temas claro y

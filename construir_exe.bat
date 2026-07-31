@@ -1,5 +1,7 @@
 @echo off
-REM Genera el ejecutable en dist\GestosManos\GestosManos.exe
+REM Genera los dos ejecutables:
+REM   dist\ControlPorGestos\ControlPorGestos.exe  -> la aplicacion
+REM   dist\InstalarControlPorGestos.exe           -> el instalador (un archivo)
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\pyinstaller.exe" (
@@ -16,9 +18,15 @@ if not exist ".venv\Scripts\pyinstaller.exe" (
 ".venv\Scripts\pyinstaller.exe" --noconfirm --clean gestos_manos.spec
 if errorlevel 1 ( echo. & echo FALLO la construccion. & pause & exit /b 1 )
 
-REM Dejar el modelo junto al .exe para que funcione sin conexion desde el inicio
-if exist "hand_landmarker.task" copy /y "hand_landmarker.task" "dist\GestosManos\" >nul
+REM El modelo va junto al .exe para que funcione sin conexion desde el inicio
+if exist "hand_landmarker.task" copy /y "hand_landmarker.task" "dist\ControlPorGestos\" >nul
 
 echo.
-echo Listo: dist\GestosManos\GestosManos.exe
+echo Listo:
+echo   Aplicacion : dist\ControlPorGestos\ControlPorGestos.exe
+echo   Instalador : dist\InstalarControlPorGestos.exe
+echo.
+echo NOTA: los .exe no van firmados. Windows puede bloquearlos la primera vez
+echo       (clic derecho ^> Propiedades ^> Desbloquear, o "Mas informacion" ^>
+echo       "Ejecutar de todas formas" en SmartScreen).
 pause

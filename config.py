@@ -111,6 +111,9 @@ ETIQUETA_FORMA = dict(FORMAS)
 ETIQUETA_ACCION = dict(ACCIONES)
 
 
+# Resoluciones de captura que ofrece el selector de ajustes
+RESOLUCIONES = ["640x480", "960x540", "1280x720", "1920x1080"]
+
 PREFIJO_PROPIO = "propio:"
 
 
@@ -153,6 +156,24 @@ def teclas_de(accion: str, cfg: dict | None = None) -> tuple[str, ...] | None:
 
 DEFECTO = {
     "tema": "oscuro",                       # "oscuro" | "claro"
+    "idioma": "es",                         # ver idiomas.IDIOMAS
+    # --- Comportamiento de la aplicacion ---
+    "app": {
+        "autoarranque": False,              # abrirse al iniciar Windows
+        "arrancar_minimizado": False,
+        "detectar_al_abrir": False,         # empezar a detectar sin pulsar nada
+        "confirmar_salida": False,
+        "sonido": True,                     # pitido al hacer clic / lanzar atajo
+    },
+    # --- Deteccion ---
+    "deteccion": {
+        "espejo": True,                     # ver la camara como un espejo
+        "estela": True,                     # dibujar el rastro del dedo
+        "mostrar_ventana": True,            # ver la ventana de la camara
+        "resolucion": "960x540",
+        "espera_atajo": 0.35,               # s manteniendo para lanzar un atajo
+        "espera_control": 1.2,              # s para activar/desactivar
+    },
     "gestos": {
         "un_dedo": "mover",              # el indice SIEMPRE senala: no se cambia
         "dos_dedos": "clic_izq",
@@ -205,6 +226,26 @@ def _validar(cfg: dict) -> dict:
     """Corrige valores imposibles para que la deteccion nunca reciba basura."""
     if cfg["tema"] not in ("oscuro", "claro"):
         cfg["tema"] = DEFECTO["tema"]
+
+    import idiomas                          # aqui: evita ciclos al importar
+    if cfg["idioma"] not in dict(idiomas.IDIOMAS):
+        cfg["idioma"] = DEFECTO["idioma"]
+
+    for clave in ("autoarranque", "arrancar_minimizado", "detectar_al_abrir",
+                  "confirmar_salida", "sonido"):
+        cfg["app"][clave] = bool(cfg["app"].get(clave, DEFECTO["app"][clave]))
+
+    d = cfg["deteccion"]
+    for clave in ("espejo", "estela", "mostrar_ventana"):
+        d[clave] = bool(d.get(clave, DEFECTO["deteccion"][clave]))
+    if d.get("resolucion") not in RESOLUCIONES:
+        d["resolucion"] = DEFECTO["deteccion"]["resolucion"]
+    for clave, minimo, maximo in (("espera_atajo", 0.1, 2.0),
+                                  ("espera_control", 0.3, 5.0)):
+        try:
+            d[clave] = min(maximo, max(minimo, float(d[clave])))
+        except (TypeError, ValueError, KeyError):
+            d[clave] = DEFECTO["deteccion"][clave]
 
     # Atajos propios: se descarta lo que no tenga forma de atajo enviable, para
     # que un archivo editado a mano no deje la deteccion con teclas invalidas.

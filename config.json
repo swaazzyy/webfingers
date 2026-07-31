@@ -1,5 +1,21 @@
 {
   "tema": "oscuro",
+  "idioma": "es",
+  "app": {
+    "autoarranque": false,
+    "arrancar_minimizado": false,
+    "detectar_al_abrir": false,
+    "confirmar_salida": false,
+    "sonido": true
+  },
+  "deteccion": {
+    "espejo": true,
+    "estela": true,
+    "mostrar_ventana": true,
+    "resolucion": "1920x1080",
+    "espera_atajo": 0.35,
+    "espera_control": 1.2
+  },
   "gestos": {
     "un_dedo": "mover",
     "dos_dedos": "clic_izq",

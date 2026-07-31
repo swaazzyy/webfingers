@@ -19,6 +19,8 @@ from pathlib import Path
 
 import config
 import grabador
+import idiomas
+import sistema
 
 
 def carpeta_base() -> Path:
@@ -66,6 +68,11 @@ class Launcher:
         self.proceso: subprocess.Popen | None = None
         self.cfg = config.cargar(RUTA_CONFIG)
         self.tema = self.cfg["tema"]
+        self.t = idiomas.Textos(self.cfg["idioma"])
+        # El registro manda sobre el archivo: si el usuario quito el arranque
+        # automatico por fuera, la casilla debe reflejarlo.
+        self.cfg["app"]["autoarranque"] = sistema.autoarranque_activo()
+        self._traducibles: list[tuple] = []
 
         self.gestos_var: dict[str, tk.StringVar] = {}
         self.menus_gestos: list[tk.Menubutton] = []
@@ -78,7 +85,7 @@ class Launcher:
         self._pintables: list[tuple] = []
         self._tarjetas: list[tk.Frame] = []
 
-        raiz.title("Gestos · Control por camara")
+        raiz.title(self.t("titulo"))
         raiz.resizable(False, False)
         self._construir()
         self.cargar_en_ui(self.cfg)
@@ -88,16 +95,33 @@ class Launcher:
 
     # -- helpers de construccion ------------------------------------------- #
 
-    def _reg(self, widget, bg, fg=None, **extra) -> None:
-        """Apunta un widget para recolorearlo al cambiar de tema."""
-        self._pintables.append((widget, bg, fg, extra))
+    def _reg(self, widget, bg, fg=None, clave=None, **extra) -> None:
+        """Apunta un widget para recolorearlo al cambiar de tema.
 
-    def _tarjeta(self, padre, titulo: str) -> tk.Frame:
+        Con `clave` se apunta ademas para volver a traducirlo al cambiar de
+        idioma, sin tener que reconstruir la ventana entera.
+        """
+        self._pintables.append((widget, bg, fg, extra))
+        if clave:
+            self._traducibles.append((widget, clave))
+
+    def _retraducir(self) -> None:
+        """Repinta todos los textos en el idioma actual."""
+        for widget, clave in self._traducibles:
+            try:
+                widget.configure(text=self.t(clave))
+            except tk.TclError:
+                pass
+        self.raiz.title(self.t("titulo"))
+        self._modo_iniciar() if not self._deteccion_viva() else None
+        self._refrescar_atajos()
+
+    def _tarjeta(self, padre, clave: str) -> tk.Frame:
         """Bloque con titulo y un marco suave, para agrupar ajustes."""
-        cab = tk.Label(padre, text=titulo.upper(), anchor="w",
+        cab = tk.Label(padre, text=self.t(clave), anchor="w",
                        font=("Segoe UI", 8, "bold"))
         cab.pack(fill="x", pady=(14, 5))
-        self._reg(cab, "fondo", "sub")
+        self._reg(cab, "fondo", "sub", clave=clave)
 
         marco = tk.Frame(padre, bd=1, relief="solid", padx=14, pady=12)
         marco.pack(fill="x")
@@ -118,10 +142,18 @@ class Launcher:
         cab.pack(fill="x")
         self._reg(cab, "fondo")
 
-        titulo = tk.Label(cab, text="Control por gestos",
+        titulo = tk.Label(cab, text=self.t("app_titulo"),
                           font=("Segoe UI", 17, "bold"))
         titulo.pack(side="left")
-        self._reg(titulo, "fondo", "texto")
+        self._reg(titulo, "fondo", "texto", clave="app_titulo")
+
+        # Engranaje de ajustes, en la esquina superior derecha
+        self.btn_ajustes = tk.Button(cab, text=self.t("ajustes"), width=11,
+                                     relief="flat", bd=0, cursor="hand2",
+                                     font=("Segoe UI", 9),
+                                     command=self._abrir_ajustes)
+        self.btn_ajustes.pack(side="right", pady=4, padx=(6, 0))
+        self._reg(self.btn_ajustes, "boton", "boton_txt", clave="ajustes")
 
         self.btn_tema = tk.Button(cab, text="", width=11, relief="flat", bd=0,
                                   cursor="hand2", font=("Segoe UI", 9),
@@ -129,10 +161,10 @@ class Launcher:
         self.btn_tema.pack(side="right", pady=4)
         self._reg(self.btn_tema, "boton", "boton_txt")
 
-        sub = tk.Label(cab, text="  mueve el cursor con la mano",
+        sub = tk.Label(cab, text="  " + self.t("app_sub"),
                        font=("Segoe UI", 10))
         sub.pack(side="left", pady=(6, 0))
-        self._reg(sub, "fondo", "sub")
+        self._reg(sub, "fondo", "sub", clave="app_sub")
 
         # ---- Dos columnas ------------------------------------------------ #
         cuerpo = tk.Frame(cont)
@@ -148,7 +180,7 @@ class Launcher:
         self._reg(der, "fondo")
 
         # ---- Editor de gestos (izquierda) -------------------------------- #
-        panel_g = self._tarjeta(izq, "Gestos  ·  elige que hace cada mano")
+        panel_g = self._tarjeta(izq, "sec_gestos")
         self.panel_gestos = panel_g
         for fila, (fid, fetiqueta) in enumerate(config.FORMAS):
             ico = tk.Label(panel_g, text=ICONOS.get(fid, "•"),
@@ -190,47 +222,41 @@ class Launcher:
             self._reg(quitar, "tarjeta", "sub")
 
         # ---- Sensibilidad (derecha) -------------------------------------- #
-        panel_s = self._tarjeta(der, "Puntero")
+        panel_s = self._tarjeta(der, "sec_puntero")
         self.var_ganancia = tk.DoubleVar()
         self.var_acel = tk.DoubleVar()
-        self._deslizador(panel_s, 0, "Velocidad", self.var_ganancia,
-                         0.5, 6.0, 0.1, "lento y preciso ←→ rapido")
-        self._deslizador(panel_s, 3, "Aceleracion", self.var_acel,
-                         0.0, 4.0, 0.1, "empuje extra en gestos amplios")
+        self._deslizador(panel_s, 0, "velocidad", self.var_ganancia,
+                         0.5, 6.0, 0.1, "velocidad_pista")
+        self._deslizador(panel_s, 3, "aceleracion", self.var_acel,
+                         0.0, 4.0, 0.1, "aceleracion_pista")
 
         # ---- Camara (derecha) -------------------------------------------- #
-        panel_c = self._tarjeta(der, "Camara")
+        panel_c = self._tarjeta(der, "sec_camara")
         self.var_compartir = tk.BooleanVar()
         self.var_menu = tk.BooleanVar()
         self.checks = []
-        for fila, (texto, var) in enumerate([
-                ("Compartir con otras apps (Zoom, Teams…)", self.var_compartir),
-                ("Preguntar que camara usar al arrancar", self.var_menu)]):
-            chk = tk.Checkbutton(panel_c, text=texto, variable=var, anchor="w",
-                                 font=("Segoe UI", 9), bd=0,
+        for fila, (clave, var) in enumerate([
+                ("compartir_camara", self.var_compartir),
+                ("preguntar_camara", self.var_menu)]):
+            chk = tk.Checkbutton(panel_c, text=self.t(clave), variable=var,
+                                 anchor="w", font=("Segoe UI", 9), bd=0,
                                  highlightthickness=0, cursor="hand2")
             chk.grid(row=fila, column=0, sticky="w", pady=2)
-            self._reg(chk, "tarjeta", "texto", check=True)
+            self._reg(chk, "tarjeta", "texto", clave=clave, check=True)
             self.checks.append(chk)
 
         # ---- Como se asignan los atajos (izquierda) ----------------------- #
-        nota = tk.Label(
-            izq, anchor="w", justify="left", font=("Segoe UI", 9), pady=8,
-            text="Despliega para elegir raton o un atajo ya hecho.   ⌨ graba la "
-                 "combinacion\nde teclas que quieras (incluida la tecla "
-                 "Windows).   ✕ deja el gesto sin asignar.")
+        nota = tk.Label(izq, anchor="w", justify="left", font=("Segoe UI", 9),
+                        pady=8, text=self.t("pista_gestos"))
         nota.pack(fill="x")
-        self._reg(nota, "fondo", "sub")
+        self._reg(nota, "fondo", "sub", clave="pista_gestos")
 
         # ---- Ayuda (derecha) --------------------------------------------- #
-        panel_a = self._tarjeta(der, "Mientras detecta")
-        ayuda = ("La ventana de camara no muestra texto.\n"
-                 "Salir de la deteccion:  tecla  Q  o cerrar la ventana.\n"
-                 "El gesto de on/off pausa el control sin cerrar nada.")
-        lab_a = tk.Label(panel_a, text=ayuda, justify="left", anchor="w",
-                         font=("Segoe UI", 9))
+        panel_a = self._tarjeta(der, "sec_ayuda")
+        lab_a = tk.Label(panel_a, text=self.t("ayuda_deteccion"), justify="left",
+                         anchor="w", font=("Segoe UI", 9))
         lab_a.pack(fill="x")
-        self._reg(lab_a, "tarjeta", "sub")
+        self._reg(lab_a, "tarjeta", "sub", clave="ayuda_deteccion")
 
         # ---- Pie: estado + botones --------------------------------------- #
         pie = tk.Frame(cont)
@@ -241,24 +267,24 @@ class Launcher:
         self.punto.pack(side="left")
         self._reg(self.punto, "fondo", "parado")
 
-        self.estado = tk.Label(pie, text="Detenido", font=("Segoe UI", 9),
+        self.estado = tk.Label(pie, text=self.t("estado_detenido"), font=("Segoe UI", 9),
                                anchor="w")
         self.estado.pack(side="left", padx=(6, 0))
         self._reg(self.estado, "fondo", "sub")
 
-        btn_reset = tk.Button(pie, text="Restablecer", width=12, relief="flat",
+        btn_reset = tk.Button(pie, text=self.t("restablecer"), width=12, relief="flat",
                               bd=0, cursor="hand2", font=("Segoe UI", 9),
                               command=self._restablecer)
         btn_reset.pack(side="right", padx=(8, 0))
         self._reg(btn_reset, "boton", "boton_txt")
 
-        btn_guardar = tk.Button(pie, text="Guardar", width=11, relief="flat",
+        btn_guardar = tk.Button(pie, text=self.t("guardar"), width=11, relief="flat",
                                 bd=0, cursor="hand2", font=("Segoe UI", 9),
                                 command=self._guardar)
         btn_guardar.pack(side="right", padx=(8, 0))
         self._reg(btn_guardar, "boton", "boton_txt")
 
-        self.btn_iniciar = tk.Button(pie, text="▶  Iniciar", width=14, bd=0,
+        self.btn_iniciar = tk.Button(pie, text=self.t("iniciar"), width=14, bd=0,
                                      font=("Segoe UI", 11, "bold"),
                                      relief="flat", cursor="hand2",
                                      command=self._iniciar_o_parar)
@@ -305,7 +331,7 @@ class Launcher:
             return
 
         self._grabando = fid
-        self.gestos_var[fid].set("Pulsa las teclas…")
+        self.gestos_var[fid].set(self.t("estado_pulsa"))
         self._pintar_grabacion(fid, True)
 
         self._grabador = grabador.GrabadorAtajos()
@@ -316,7 +342,7 @@ class Launcher:
             self._pintar_grabacion(fid, False)
             self._refrescar_atajos()
             self.estado.configure(
-                text="No se pudo capturar el teclado en este equipo")
+                text=self.t("estado_sin_teclado"))
             return
 
         self._sondear_grabacion(fid)
@@ -332,7 +358,7 @@ class Launcher:
             return
         if self._grabador.cancelado:
             self._parar_grabacion()
-            self.estado.configure(text="Grabacion cancelada")
+            self.estado.configure(text=self.t("estado_cancelado"))
             return
         teclas = self._grabador.capturado
         if teclas is not None:
@@ -378,7 +404,7 @@ class Launcher:
         self.gestos_var[fid].set("🚫 Nada")
         config.guardar(RUTA_CONFIG, self.cfg)
         self._refrescar_atajos()
-        self.estado.configure(text=f"{config.ETIQUETA_FORMA[fid]} sin asignar")
+        self.estado.configure(text=self.t("estado_sin_asignar", gesto=config.ETIQUETA_FORMA[fid]))
 
     def _menu_cambiado(self, fid: str) -> None:
         """El usuario eligio una accion en el menu: se refleja en el recuadro."""
@@ -406,11 +432,12 @@ class Launcher:
             self._pintar_grabacion(fid, False)
         self._cargando = False
 
-    def _deslizador(self, padre, fila, texto, var, desde, hasta, paso,
-                    pista) -> None:
-        lab = tk.Label(padre, text=texto, anchor="w", font=("Segoe UI", 10))
+    def _deslizador(self, padre, fila, clave, var, desde, hasta, paso,
+                    clave_pista) -> None:
+        lab = tk.Label(padre, text=self.t(clave), anchor="w",
+                       font=("Segoe UI", 10))
         lab.grid(row=fila, column=0, sticky="w")
-        self._reg(lab, "tarjeta", "texto")
+        self._reg(lab, "tarjeta", "texto", clave=clave)
 
         esc = tk.Scale(padre, variable=var, from_=desde, to=hasta,
                        resolution=paso, orient="horizontal", length=250,
@@ -420,9 +447,10 @@ class Launcher:
         esc.grid(row=fila + 1, column=0, sticky="w")
         self._reg(esc, "tarjeta", "texto", escala=True)
 
-        hint = tk.Label(padre, text=pista, anchor="w", font=("Segoe UI", 8))
+        hint = tk.Label(padre, text=self.t(clave_pista), anchor="w",
+                        font=("Segoe UI", 8))
         hint.grid(row=fila + 2, column=0, sticky="w", pady=(0, 10))
-        self._reg(hint, "tarjeta", "sub")
+        self._reg(hint, "tarjeta", "sub", clave=clave_pista)
 
     # -- temas -------------------------------------------------------------- #
 
@@ -458,7 +486,7 @@ class Launcher:
                            activebackground=t["acento"],
                            activeforeground=t["primario_txt"], bd=0)
         self.btn_tema.configure(
-            text="☀  Claro" if self.tema == "oscuro" else "🌙  Oscuro")
+            text=self.t("tema_claro") if self.tema == "oscuro" else self.t("tema_oscuro"))
         self._pintar_estado()
 
     def _alternar_tema(self) -> None:
@@ -507,13 +535,13 @@ class Launcher:
         cfg = self.leer_config()
         config.guardar(RUTA_CONFIG, cfg)
         self.cfg = cfg
-        self.estado.configure(text="Configuracion guardada")
+        self.estado.configure(text=self.t("estado_guardado"))
         return cfg
 
     def _restablecer(self) -> None:
         self.cargar_en_ui(config.por_defecto())
         self._aplicar_tema()
-        self.estado.configure(text="Valores de fabrica (sin guardar)")
+        self.estado.configure(text=self.t("estado_fabrica"))
 
     def _interprete(self) -> str:
         """Ruta a pythonw (sin consola) o, en su defecto, al python actual."""
@@ -529,20 +557,20 @@ class Launcher:
             self.proceso.terminate()
             self.proceso = None
             self._modo_iniciar()
-            self.estado.configure(text="Detenido")
+            self.estado.configure(text=self.t("estado_detenido"))
             return
 
         self._guardar()          # la deteccion lee config.json al arrancar
         script = carpeta_base() / "gestos_manos.py"
         self.proceso = subprocess.Popen([self._interprete(), str(script)],
                                         cwd=str(carpeta_base()))
-        self.btn_iniciar.configure(text="■  Detener")
-        self.estado.configure(text="En marcha · ponte frente a la camara")
+        self.btn_iniciar.configure(text=self.t("detener"))
+        self.estado.configure(text=self.t("estado_marcha"))
         self._pintar_estado()
         self.raiz.after(1500, self._vigilar)
 
     def _modo_iniciar(self) -> None:
-        self.btn_iniciar.configure(text="▶  Iniciar")
+        self.btn_iniciar.configure(text=self.t("iniciar"))
         self._pintar_estado()
 
     def _vigilar(self) -> None:
@@ -552,9 +580,176 @@ class Launcher:
         elif self.proceso is not None:
             self.proceso = None
             self._modo_iniciar()
-            self.estado.configure(text="La deteccion se cerro")
+            self.estado.configure(text=self.t("estado_cerrado"))
+
+    # -- ventana de ajustes ------------------------------------------------- #
+
+    def _abrir_ajustes(self) -> None:
+        """Panel con todos los ajustes de la aplicacion."""
+        t, T = TEMAS[self.tema], self.t
+        dlg = tk.Toplevel(self.raiz)
+        dlg.title(T("ajustes_titulo"))
+        dlg.configure(bg=t["fondo"])
+        dlg.resizable(False, False)
+        dlg.transient(self.raiz)
+        dlg.grab_set()
+
+        cont = tk.Frame(dlg, bg=t["fondo"], padx=22, pady=16)
+        cont.pack(fill="both", expand=True)
+
+        # Estas variables viven mientras el dialogo este abierto
+        v = {
+            "idioma": tk.StringVar(value=dict(idiomas.IDIOMAS)[self.cfg["idioma"]]),
+            "tema": tk.StringVar(value=self.cfg["tema"]),
+            "resolucion": tk.StringVar(value=self.cfg["deteccion"]["resolucion"]),
+        }
+        for clave in ("autoarranque", "arrancar_minimizado", "detectar_al_abrir",
+                      "confirmar_salida", "sonido"):
+            v[clave] = tk.BooleanVar(value=self.cfg["app"][clave])
+        for clave in ("espejo", "estela", "mostrar_ventana"):
+            v[clave] = tk.BooleanVar(value=self.cfg["deteccion"][clave])
+        for clave in ("espera_atajo", "espera_control"):
+            v[clave] = tk.DoubleVar(value=self.cfg["deteccion"][clave])
+
+        def seccion(titulo):
+            lab = tk.Label(cont, text=titulo.upper(), bg=t["fondo"], fg=t["sub"],
+                           font=("Segoe UI", 8, "bold"), anchor="w")
+            lab.pack(fill="x", pady=(12, 4))
+            marco = tk.Frame(cont, bg=t["tarjeta"], bd=1, relief="solid",
+                             padx=12, pady=8)
+            marco.configure(highlightbackground=t["borde"])
+            marco.pack(fill="x")
+            return marco
+
+        def casilla(padre, texto, var, pista=""):
+            tk.Checkbutton(padre, text=texto, variable=var, anchor="w",
+                           bg=t["tarjeta"], fg=t["texto"], selectcolor=t["entrada"],
+                           activebackground=t["tarjeta"], activeforeground=t["texto"],
+                           bd=0, highlightthickness=0, cursor="hand2",
+                           font=("Segoe UI", 9)).pack(fill="x", pady=1)
+            if pista:
+                tk.Label(padre, text=pista, bg=t["tarjeta"], fg=t["sub"],
+                         font=("Segoe UI", 8), anchor="w").pack(fill="x",
+                                                                padx=(22, 0))
+
+        def desplegable(padre, texto, var, opciones):
+            fila = tk.Frame(padre, bg=t["tarjeta"])
+            fila.pack(fill="x", pady=2)
+            tk.Label(fila, text=texto, bg=t["tarjeta"], fg=t["texto"],
+                     font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
+            om = tk.OptionMenu(fila, var, *opciones)
+            om.configure(bg=t["entrada"], fg=t["texto"], bd=0, width=16,
+                         highlightthickness=0, anchor="w", cursor="hand2",
+                         activebackground=t["acento"], font=("Segoe UI", 9))
+            om["menu"].configure(bg=t["entrada"], fg=t["texto"], bd=0,
+                                 activebackground=t["acento"])
+            om.pack(side="left")
+
+        def deslizador(padre, texto, var, desde, hasta, paso):
+            fila = tk.Frame(padre, bg=t["tarjeta"])
+            fila.pack(fill="x", pady=2)
+            tk.Label(fila, text=texto, bg=t["tarjeta"], fg=t["texto"],
+                     font=("Segoe UI", 9), width=30, anchor="w").pack(side="left")
+            tk.Scale(fila, variable=var, from_=desde, to=hasta, resolution=paso,
+                     orient="horizontal", length=150, bg=t["tarjeta"],
+                     fg=t["texto"], troughcolor=t["entrada"], bd=0,
+                     highlightthickness=0, font=("Segoe UI", 8),
+                     activebackground=t["acento"]).pack(side="left")
+
+        # --- General ---
+        g1 = seccion(T("aj_general"))
+        desplegable(g1, T("aj_idioma"), v["idioma"],
+                    [n for _, n in idiomas.IDIOMAS])
+        desplegable(g1, T("aj_tema"), v["tema"], ["oscuro", "claro"])
+        casilla(g1, T("aj_inicio"), v["autoarranque"], T("aj_inicio_pista"))
+        casilla(g1, T("aj_minimizado"), v["arrancar_minimizado"])
+        casilla(g1, T("aj_autodeteccion"), v["detectar_al_abrir"])
+        casilla(g1, T("aj_confirmar"), v["confirmar_salida"])
+
+        # --- Deteccion ---
+        g2 = seccion(T("aj_deteccion"))
+        casilla(g2, T("aj_espejo"), v["espejo"])
+        casilla(g2, T("aj_estela"), v["estela"])
+        casilla(g2, T("aj_ventana"), v["mostrar_ventana"])
+        desplegable(g2, T("aj_resolucion"), v["resolucion"], config.RESOLUCIONES)
+
+        # --- Tiempos ---
+        g3 = seccion(T("aj_tiempos"))
+        deslizador(g3, T("aj_espera_atajo"), v["espera_atajo"], 0.1, 2.0, 0.05)
+        deslizador(g3, T("aj_espera_control"), v["espera_control"], 0.3, 5.0, 0.1)
+
+        # --- Avisos ---
+        g4 = seccion(T("aj_avisos"))
+        casilla(g4, T("aj_sonido"), v["sonido"])
+
+        # --- Ayuda ---
+        g5 = seccion(T("aj_ayuda"))
+        for texto, accion in (
+                (T("aj_github"), lambda: sistema.abrir(idiomas.URL_GITHUB)),
+                (T("aj_manual"),
+                 lambda: sistema.abrir(idiomas.URL_GITHUB + "#chuleta-de-gestos")),
+                (T("aj_carpeta"),
+                 lambda: sistema.abrir(str(carpeta_base())))):
+            tk.Button(g5, text=texto, command=accion, anchor="w", bd=0,
+                      relief="flat", cursor="hand2", bg=t["tarjeta"],
+                      fg=t["acento"], activebackground=t["tarjeta"],
+                      font=("Segoe UI", 9)).pack(fill="x", pady=1)
+        tk.Label(g5, text=T("aj_version", v=idiomas.VERSION), bg=t["tarjeta"],
+                 fg=t["sub"], font=("Segoe UI", 8), anchor="w").pack(fill="x",
+                                                                     pady=(6, 0))
+
+        # --- Botones ---
+        pie = tk.Frame(cont, bg=t["fondo"])
+        pie.pack(fill="x", pady=(16, 0))
+
+        def aplicar() -> None:
+            nombre_a_id = {n: i for i, n in idiomas.IDIOMAS}
+            self.cfg["idioma"] = nombre_a_id.get(v["idioma"].get(), "es")
+            self.cfg["tema"] = v["tema"].get()
+            for clave in ("arrancar_minimizado", "detectar_al_abrir",
+                          "confirmar_salida", "sonido"):
+                self.cfg["app"][clave] = bool(v[clave].get())
+            for clave in ("espejo", "estela", "mostrar_ventana"):
+                self.cfg["deteccion"][clave] = bool(v[clave].get())
+            self.cfg["deteccion"]["resolucion"] = v["resolucion"].get()
+            for clave in ("espera_atajo", "espera_control"):
+                self.cfg["deteccion"][clave] = round(v[clave].get(), 2)
+
+            # El autoarranque se escribe en el registro: se guarda lo que de
+            # verdad quedo, no lo que se pidio.
+            self.cfg["app"]["autoarranque"] = sistema.sincronizar_autoarranque(
+                bool(v["autoarranque"].get()))
+
+            config.guardar(RUTA_CONFIG, self.cfg)
+            self.cfg = config.cargar(RUTA_CONFIG)
+            self.tema = self.cfg["tema"]
+            self.t.cambiar(self.cfg["idioma"])
+            dlg.grab_release()
+            dlg.destroy()
+            self._retraducir()
+            self._aplicar_tema()
+            self.estado.configure(text=self.t("estado_guardado"))
+
+        tk.Button(pie, text=T("aceptar"), command=aplicar, bd=0, width=12,
+                  bg=t["primario"], fg=t["primario_txt"], relief="flat",
+                  cursor="hand2", font=("Segoe UI", 10, "bold")).pack(side="right")
+        tk.Button(pie, text=T("cancelar"), bd=0, width=10, relief="flat",
+                  cursor="hand2", bg=t["boton"], fg=t["boton_txt"],
+                  font=("Segoe UI", 10),
+                  command=lambda: (dlg.grab_release(), dlg.destroy())
+                  ).pack(side="right", padx=8)
+
+        dlg.update_idletasks()
+        x = self.raiz.winfo_rootx() + (self.raiz.winfo_width()
+                                       - dlg.winfo_width()) // 2
+        dlg.geometry(f"+{max(0, x)}+{max(0, self.raiz.winfo_rooty() + 30)}")
 
     def _cerrar(self) -> None:
+        if self.cfg["app"]["confirmar_salida"]:
+            from tkinter import messagebox
+            if not messagebox.askokcancel(self.t("titulo"),
+                                          self.t("confirmar_salir")):
+                return
         self._parar_grabacion()   # nunca dejar el hook de teclado instalado
         if self._deteccion_viva():
             self.proceso.terminate()
