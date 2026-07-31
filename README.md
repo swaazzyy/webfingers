@@ -125,6 +125,17 @@ por clave y la ventana se retraduce en caliente. Si a un idioma le faltara
 alguna clave, se usa el español como respaldo en vez de mostrar el
 identificador crudo.
 
+**Se traduce todo**, incluidos los nombres de los gestos y de las acciones:
+
+![launcher en inglés](launcher_en.png)
+
+Para conseguirlo, `config.py` guarda solo **identificadores** (`mano_abierta`,
+`maximizar`), el **emoji** (que no depende del idioma) y las **teclas**; el texto
+visible vive en [idiomas.py](idiomas.py) bajo las claves `forma_<id>` y
+`accion_<id>`. Añadir un idioma es añadir un diccionario, sin tocar el resto del
+código. Lo único que no se traduce son los atajos que grabas tú: su nombre es la
+propia combinación de teclas.
+
 ## Ejecución
 
 Doble clic en **`Gestos.vbs`** (abre la ventana, sin consola). En la GUI pulsa
@@ -496,7 +507,9 @@ Con pruebas automáticas, sin cámara:
   sobreviven a guardar/cargar, los valores imposibles se corrigen, y **llegan de
   verdad a la detección** (se comprueba que cambian sus variables internas).
 - **Idiomas**: ningún idioma deja claves sin traducir, uno desconocido cae al
-  español y una clave inexistente no revienta.
+  español y una clave inexistente no revienta. Se comprueba además que **cada
+  forma de la mano y cada acción tienen texto en todos los idiomas** y emoji
+  asignado — así no puede colarse una etiqueta sin traducir.
 - **Arranque con Windows**: se activa y desactiva en el registro de verdad, es
   idempotente, y la prueba **restaura el estado que tenía tu equipo**.
 - **Atajos propios**: sobreviven a guardar/cargar, se asignan a un gesto, se
@@ -530,7 +543,7 @@ Con pruebas automáticas, sin cámara:
   se mueve nada.
 - `sizeof(INPUT)` correcto en 64 bits.
 
-Sin cámara, **275 comprobaciones en verde** (71 gestos/clics/atajos + 42
+Sin cámara, **277 comprobaciones en verde** (73 gestos/clics/atajos + 42
 instalador/ajustes/idiomas + 35
 config/GUI/atajos propios + 32
 puntero/cursor + 25 cámara/menú/arranque + 21 config/GUI + 12 portabilidad

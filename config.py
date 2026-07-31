@@ -23,92 +23,95 @@ from pathlib import Path
 # --------------------------------------------------------------------------- #
 
 # Formas de la mano. El orden es el que se muestra en el editor.
-FORMAS = [
-    ("un_dedo",        "1 dedo  ·  indice"),
-    ("dos_dedos",      "2 dedos  ·  + medio"),
-    ("tres_dedos",     "3 dedos  ·  + anular"),
-    ("pulgar",         "Pulgar arriba"),
-    ("mano_abierta",   "Mano abierta  ·  5 dedos"),
-    ("puno",           "Puno  ·  0 dedos"),
-    ("pulgar_menique", "Pulgar + menique"),
-]
+# Solo IDENTIFICADORES: el texto visible vive en idiomas.py, para que se pueda
+# traducir. El orden es el que se muestra en el editor de gestos.
+FORMAS = ["un_dedo", "dos_dedos", "tres_dedos", "pulgar", "mano_abierta",
+          "puno", "pulgar_menique"]
 
 # Acciones de raton y control. No son atajos: las gestiona la propia app.
-ACCIONES_BASE = [
-    ("mover",    "🖱️ Mover el cursor"),
-    ("clic_izq", "👆 Clic izquierdo / arrastrar"),
-    ("clic_der", "👉 Clic derecho"),
-    ("alternar", "⏯️ Activar / desactivar"),
-    ("nada",     "🚫 Nada"),
-]
+ACCIONES_BASE = ["mover", "clic_izq", "clic_der", "alternar", "nada"]
 
-# Catalogo de ATAJOS DE WINDOWS: id -> (etiqueta con emoji, teclas).
-# Anadir uno nuevo es anadir una linea aqui; ni la deteccion ni la GUI cambian.
+# Catalogo de ATAJOS DE WINDOWS: id -> teclas. El texto visible esta en
+# idiomas.py (clave "accion_<id>") y el emoji en EMOJI_ACCION, porque ni las
+# teclas ni el emoji dependen del idioma.
 ATAJOS = {
     # --- Ventanas ---
-    "maximizar":    ("🔼 Maximizar ventana", ("win", "arriba")),
-    "minimizar":    ("🔽 Minimizar ventana", ("win", "abajo")),
-    "acoplar_izq":  ("◀️ Acoplar a la izquierda", ("win", "izquierda")),
-    "acoplar_der":  ("▶️ Acoplar a la derecha", ("win", "derecha")),
-    "cerrar_app":   ("❌ Cerrar ventana", ("alt", "f4")),
-    "pantalla_completa": ("🖥️ Pantalla completa", ("f11",)),
+    "maximizar":    ("win", "arriba"),
+    "minimizar":    ("win", "abajo"),
+    "acoplar_izq":  ("win", "izquierda"),
+    "acoplar_der":  ("win", "derecha"),
+    "cerrar_app":   ("alt", "f4"),
+    "pantalla_completa": ("f11",),
     # --- Cambiar de aplicacion ---
-    "cambiar_app":  ("🔄 Cambiar de aplicacion", ("alt", "tab")),
-    "vista_tareas": ("🗂️ Vista de tareas", ("win", "tab")),
-    "escritorio":   ("🖥️ Mostrar el escritorio", ("win", "d")),
-    "escritorio_der": ("➡️ Escritorio siguiente", ("win", "ctrl", "derecha")),
-    "escritorio_izq": ("⬅️ Escritorio anterior", ("win", "ctrl", "izquierda")),
+    "cambiar_app":  ("alt", "tab"),
+    "vista_tareas": ("win", "tab"),
+    "escritorio":   ("win", "d"),
+    "escritorio_der": ("win", "ctrl", "derecha"),
+    "escritorio_izq": ("win", "ctrl", "izquierda"),
     # --- Sistema ---
-    "explorador":   ("📁 Abrir el Explorador", ("win", "e")),
-    "ajustes":      ("⚙️ Abrir Configuracion", ("win", "i")),
-    "buscar":       ("🔎 Buscar en Windows", ("win", "s")),
-    "bloquear":     ("🔒 Bloquear el equipo", ("win", "l")),
-    "captura":      ("📸 Recorte de pantalla", ("win", "shift", "s")),
-    "emoji":        ("😀 Panel de emoji", ("win", ".")),
+    "explorador":   ("win", "e"),
+    "ajustes":      ("win", "i"),
+    "buscar":       ("win", "s"),
+    "bloquear":     ("win", "l"),
+    "captura":      ("win", "shift", "s"),
+    "emoji":        ("win", "."),
     # --- Edicion ---
-    "copiar":       ("📋 Copiar", ("ctrl", "c")),
-    "pegar":        ("📥 Pegar", ("ctrl", "v")),
-    "deshacer":     ("↩️ Deshacer", ("ctrl", "z")),
-    "rehacer":      ("↪️ Rehacer", ("ctrl", "y")),
-    "seleccionar":  ("🔲 Seleccionar todo", ("ctrl", "a")),
-    "guardar_doc":  ("💾 Guardar", ("ctrl", "s")),
+    "copiar":       ("ctrl", "c"),
+    "pegar":        ("ctrl", "v"),
+    "deshacer":     ("ctrl", "z"),
+    "rehacer":      ("ctrl", "y"),
+    "seleccionar":  ("ctrl", "a"),
+    "guardar_doc":  ("ctrl", "s"),
     # --- Multimedia ---
-    "vol_subir":    ("🔊 Subir volumen", ("vol_subir",)),
-    "vol_bajar":    ("🔉 Bajar volumen", ("vol_bajar",)),
-    "silencio":     ("🔇 Silenciar", ("silencio",)),
-    "play":         ("⏯️ Reproducir / pausar", ("play",)),
-    "siguiente":    ("⏭️ Pista siguiente", ("siguiente",)),
-    "anterior":     ("⏮️ Pista anterior", ("anterior",)),
+    "vol_subir":    ("vol_subir",),
+    "vol_bajar":    ("vol_bajar",),
+    "silencio":     ("silencio",),
+    "play":         ("play",),
+    "siguiente":    ("siguiente",),
+    "anterior":     ("anterior",),
     # --- Navegador ---
-    "pestana_nueva": ("➕ Pestana nueva", ("ctrl", "t")),
-    "cerrar_pestana": ("✖️ Cerrar pestana", ("ctrl", "w")),
-    "recargar":     ("🔃 Recargar", ("f5",)),
+    "pestana_nueva": ("ctrl", "t"),
+    "cerrar_pestana": ("ctrl", "w"),
+    "recargar":     ("f5",),
+}
+
+# Emoji de cada accion: no depende del idioma, asi que vive aqui.
+EMOJI_ACCION = {
+    "mover": "🖱️", "clic_izq": "👆", "clic_der": "👉", "alternar": "⏯️",
+    "nada": "🚫",
+    "maximizar": "🔼", "minimizar": "🔽", "acoplar_izq": "◀️",
+    "acoplar_der": "▶️", "cerrar_app": "❌", "pantalla_completa": "🖥️",
+    "cambiar_app": "🔄", "vista_tareas": "🗂️", "escritorio": "🖥️",
+    "escritorio_der": "➡️", "escritorio_izq": "⬅️",
+    "explorador": "📁", "ajustes": "⚙️", "buscar": "🔎", "bloquear": "🔒",
+    "captura": "📸", "emoji": "😀",
+    "copiar": "📋", "pegar": "📥", "deshacer": "↩️", "rehacer": "↪️",
+    "seleccionar": "🔲", "guardar_doc": "💾",
+    "vol_subir": "🔊", "vol_bajar": "🔉", "silencio": "🔇", "play": "⏯️",
+    "siguiente": "⏭️", "anterior": "⏮️",
+    "pestana_nueva": "➕", "cerrar_pestana": "✖️", "recargar": "🔃",
 }
 
 # Agrupacion para el menu de la GUI: con 30+ opciones, una lista plana es
 # inmanejable. El orden de los ids dentro de cada grupo es el de ATAJOS.
+# Grupos del menu. El titulo es una CLAVE de idiomas, no texto suelto.
 GRUPOS = [
-    ("Raton y control", [a for a, _ in ACCIONES_BASE]),
-    ("Ventanas", ["maximizar", "minimizar", "acoplar_izq", "acoplar_der",
-                  "cerrar_app", "pantalla_completa"]),
-    ("Cambiar de aplicacion", ["cambiar_app", "vista_tareas", "escritorio",
-                               "escritorio_izq", "escritorio_der"]),
-    ("Sistema", ["explorador", "ajustes", "buscar", "bloquear", "captura",
-                 "emoji"]),
-    ("Edicion", ["copiar", "pegar", "deshacer", "rehacer", "seleccionar",
-                 "guardar_doc"]),
-    ("Multimedia", ["vol_subir", "vol_bajar", "silencio", "play", "siguiente",
-                    "anterior"]),
-    ("Navegador", ["pestana_nueva", "cerrar_pestana", "recargar"]),
+    ("grupo_raton", list(ACCIONES_BASE)),
+    ("grupo_ventanas", ["maximizar", "minimizar", "acoplar_izq", "acoplar_der",
+                        "cerrar_app", "pantalla_completa"]),
+    ("grupo_cambiar", ["cambiar_app", "vista_tareas", "escritorio",
+                       "escritorio_izq", "escritorio_der"]),
+    ("grupo_sistema", ["explorador", "ajustes", "buscar", "bloquear", "captura",
+                       "emoji"]),
+    ("grupo_edicion", ["copiar", "pegar", "deshacer", "rehacer", "seleccionar",
+                       "guardar_doc"]),
+    ("grupo_multimedia", ["vol_subir", "vol_bajar", "silencio", "play",
+                          "siguiente", "anterior"]),
+    ("grupo_navegador", ["pestana_nueva", "cerrar_pestana", "recargar"]),
 ]
 
-# La lista que ve el usuario: primero lo de raton, luego todos los atajos.
-ACCIONES = ACCIONES_BASE + [(aid, etiqueta) for aid, (etiqueta, _) in ATAJOS.items()]
-
-IDS_FORMAS = [f for f, _ in FORMAS]
-IDS_ACCIONES = [a for a, _ in ACCIONES]
-ETIQUETA_FORMA = dict(FORMAS)
-ETIQUETA_ACCION = dict(ACCIONES)
+IDS_FORMAS = list(FORMAS)
+IDS_ACCIONES = ACCIONES_BASE + list(ATAJOS)
 
 
 # Resoluciones de captura que ofrece el selector de ajustes
@@ -125,20 +128,40 @@ def id_propio(teclas) -> str:
     return PREFIJO_PROPIO + "+".join(teclas)
 
 
-def acciones(cfg: dict | None = None) -> list[tuple[str, str]]:
+def etiqueta_forma(fid: str, t=None) -> str:
+    """Nombre visible de una forma de la mano, en el idioma activo."""
+    return t(f"forma_{fid}") if t else fid
+
+
+def etiqueta_accion(aid: str, t=None, cfg: dict | None = None) -> str:
+    """Nombre visible de una accion: emoji + texto traducido.
+
+    Los atajos que graba el usuario llevan el nombre que el mismo les puso (la
+    propia combinacion de teclas), asi que no se traducen.
+    """
+    propio = (cfg or {}).get("atajos_propios", {}).get(aid)
+    if propio:
+        return propio["nombre"]
+    if t is None:
+        return aid
+    emoji = EMOJI_ACCION.get(aid, "")
+    return f"{emoji} {t(f'accion_{aid}')}".strip()
+
+
+def acciones(cfg: dict | None = None, t=None) -> list[tuple[str, str]]:
     """Acciones disponibles: las de raton, el catalogo y los atajos del usuario."""
-    lista = list(ACCIONES)
+    lista = [(aid, etiqueta_accion(aid, t, cfg)) for aid in IDS_ACCIONES]
     for aid, datos in (cfg or {}).get("atajos_propios", {}).items():
         lista.append((aid, datos["nombre"]))
     return lista
 
 
-def grupos(cfg: dict | None = None) -> list[tuple[str, list[str]]]:
-    """Como `GRUPOS`, anadiendo al final el grupo de atajos propios si los hay."""
-    lista = list(GRUPOS)
+def grupos(cfg: dict | None = None, t=None) -> list[tuple[str, list[str]]]:
+    """Como `GRUPOS` pero con los titulos traducidos y los atajos propios."""
+    lista = [(t(clave) if t else clave, ids) for clave, ids in GRUPOS]
     propios = list((cfg or {}).get("atajos_propios", {}))
     if propios:
-        lista.append(("Mis atajos", propios))
+        lista.append((t("grupo_propios") if t else "grupo_propios", propios))
     return lista
 
 

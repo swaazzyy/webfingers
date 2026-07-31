@@ -182,16 +182,16 @@ class Launcher:
         # ---- Editor de gestos (izquierda) -------------------------------- #
         panel_g = self._tarjeta(izq, "sec_gestos")
         self.panel_gestos = panel_g
-        for fila, (fid, fetiqueta) in enumerate(config.FORMAS):
+        for fila, fid in enumerate(config.FORMAS):
             ico = tk.Label(panel_g, text=ICONOS.get(fid, "•"),
                            font=("Segoe UI Emoji", 14), width=2)
             ico.grid(row=fila, column=0, sticky="w", pady=4)
             self._reg(ico, "tarjeta", "texto")
 
-            lab = tk.Label(panel_g, text=fetiqueta, anchor="w", width=27,
-                           font=("Segoe UI", 10))
+            lab = tk.Label(panel_g, text=config.etiqueta_forma(fid, self.t),
+                           anchor="w", width=27, font=("Segoe UI", 10))
             lab.grid(row=fila, column=1, sticky="w", pady=4)
-            self._reg(lab, "tarjeta", "texto")
+            self._reg(lab, "tarjeta", "texto", clave=f"forma_{fid}")
 
             # UN SOLO campo por gesto: muestra SIEMPRE lo que hace, sea una
             # accion de raton o una combinacion de teclas. Antes habia dos
@@ -297,7 +297,7 @@ class Launcher:
         Con mas de 30 atajos una lista plana seria inservible, asi que cada
         grupo (Ventanas, Multimedia..., y "Mis atajos") abre su propio submenu.
         """
-        etiqueta = dict(config.acciones(self.cfg))
+        etiqueta = dict(config.acciones(self.cfg, self.t))
         boton = tk.Menubutton(padre, textvariable=var, width=24, anchor="w",
                               relief="flat", bd=0, highlightthickness=0,
                               font=("Segoe UI", 9), cursor="hand2",
@@ -306,7 +306,7 @@ class Launcher:
         boton.configure(menu=menu)
         self._menus_desplegables.append(menu)
 
-        for titulo, ids in config.grupos(self.cfg):
+        for titulo, ids in config.grupos(self.cfg, self.t):
             sub = tk.Menu(menu, tearoff=0)
             self._menus_desplegables.append(sub)
             for aid in ids:
@@ -379,7 +379,7 @@ class Launcher:
         self.cargar_en_ui(self.cfg)
         self._refrescar_atajos()
         self.estado.configure(
-            text=f"{config.ETIQUETA_FORMA[fid]} → {grabador.describir(teclas)}")
+            text=f"{config.etiqueta_forma(fid, self.t)} → {grabador.describir(teclas)}")
 
     def _parar_grabacion(self) -> None:
         if self._grabador is not None:
@@ -401,16 +401,16 @@ class Launcher:
     def _quitar_atajo(self, fid: str) -> None:
         """Deja el gesto sin accion."""
         self.cfg["gestos"][fid] = "nada"
-        self.gestos_var[fid].set("🚫 Nada")
+        self.gestos_var[fid].set(config.etiqueta_accion("nada", self.t))
         config.guardar(RUTA_CONFIG, self.cfg)
         self._refrescar_atajos()
-        self.estado.configure(text=self.t("estado_sin_asignar", gesto=config.ETIQUETA_FORMA[fid]))
+        self.estado.configure(text=self.t("estado_sin_asignar", gesto=config.etiqueta_forma(fid, self.t)))
 
     def _menu_cambiado(self, fid: str) -> None:
         """El usuario eligio una accion en el menu: se refleja en el recuadro."""
         if self._cargando or self._grabando is not None:
             return
-        por_etiqueta = {et: aid for aid, et in config.acciones(self.cfg)}
+        por_etiqueta = {et: aid for aid, et in config.acciones(self.cfg, self.t)}
         aid = por_etiqueta.get(self.gestos_var[fid].get())
         if aid:
             self.cfg["gestos"][fid] = aid
@@ -424,11 +424,11 @@ class Launcher:
         """
         if self._grabando is not None:
             return
-        etiquetas = dict(config.acciones(self.cfg))
+        etiquetas = dict(config.acciones(self.cfg, self.t))
         self._cargando = True
         for fid in self.gestos_var:
             accion = self.cfg["gestos"].get(fid, "nada")
-            self.gestos_var[fid].set(etiquetas.get(accion, "🚫 Nada"))
+            self.gestos_var[fid].set(etiquetas.get(accion, config.etiqueta_accion("nada", self.t)))
             self._pintar_grabacion(fid, False)
         self._cargando = False
 
@@ -503,9 +503,9 @@ class Launcher:
     def cargar_en_ui(self, cfg: dict) -> None:
         """Vuelca una configuracion en los controles de la ventana."""
         self._cargando = True                # evita que el trace pise la config
-        etiqueta_accion = dict(config.acciones(cfg))
+        etiqueta_accion = dict(config.acciones(cfg, self.t))
         for fid, var in self.gestos_var.items():
-            var.set(etiqueta_accion.get(cfg["gestos"][fid], "🚫 Nada"))
+            var.set(etiqueta_accion.get(cfg["gestos"][fid], self.t("accion_nada")))
         self._cargando = False
         self.var_ganancia.set(cfg["sensibilidad"]["ganancia"])
         self.var_acel.set(cfg["sensibilidad"]["aceleracion"])
@@ -515,7 +515,7 @@ class Launcher:
 
     def leer_config(self) -> dict:
         """Construye la configuracion a partir del estado actual de la ventana."""
-        accion_por_etiqueta = {et: aid for aid, et in config.acciones(self.cfg)}
+        accion_por_etiqueta = {et: aid for aid, et in config.acciones(self.cfg, self.t)}
         cfg = config.por_defecto()
         cfg["tema"] = self.tema
         # Los atajos grabados no estan en ningun control: se arrastran tal cual
