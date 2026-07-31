@@ -4,7 +4,7 @@
     "un_dedo": "mover",
     "dos_dedos": "clic_izq",
     "tres_dedos": "cambiar_app",
-    "pulgar": "propio:win+abajo",
+    "pulgar": "nada",
     "mano_abierta": "maximizar",
     "puno": "minimizar",
     "pulgar_menique": "alternar"
