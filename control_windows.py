@@ -4,10 +4,9 @@ ventana en primer plano.
 
 - El cursor real se mueve con SendInput (movimiento absoluto sobre el escritorio
   virtual) y se pulsan sus botones.
-- El zoom usa la LUPA DE WINDOWS (Win + '+' / Win + '-'), que amplia toda la
-  pantalla: funciona en cualquier aplicacion, en el escritorio y en los menus,
-  sin depender de que la app soporte zoom ni de que ventana este seleccionada.
-  Win + Esc la cierra.
+- Los gestos disparan ATAJOS DE TECLADO de Windows (Win+Flecha, Alt+Tab...),
+  con `enviar_atajo`. Cualquier combinacion se describe como una tupla de
+  nombres de tecla, asi que anadir atajos nuevos no toca este modulo.
 
 Se usa `SendInput` (user32) via ctypes, sin dependencias extra.
 
@@ -35,10 +34,26 @@ MOUSEEVENTF_VIRTUALDESK = 0x4000          # coordenadas sobre todos los monitore
 MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
 MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP = 0x0008, 0x0010
 
-VK_LWIN = 0x5B                            # tecla Windows: abre/controla la lupa
-VK_ESCAPE = 0x1B
-VK_OEM_PLUS, VK_OEM_MINUS = 0xBB, 0xBD    # teclas +/- de la fila principal
-VK_ADD, VK_SUBTRACT = 0x6B, 0x6D          # teclado numerico (alternativa)
+# Codigos de tecla virtual. Los atajos se escriben con estos nombres, asi que
+# anadir combinaciones nuevas no exige tocar codigo: basta con la tupla.
+VK = {
+    # modificadores
+    "win": 0x5B, "ctrl": 0x11, "alt": 0x12, "shift": 0x10,
+    # navegacion y edicion
+    "tab": 0x09, "esc": 0x1B, "enter": 0x0D, "espacio": 0x20,
+    "supr": 0x2E, "inicio": 0x24, "fin": 0x23,
+    "arriba": 0x26, "abajo": 0x28, "izquierda": 0x25, "derecha": 0x27,
+    "+": 0xBB, "-": 0xBD, ".": 0xBE, ",": 0xBC,
+    # multimedia
+    "vol_subir": 0xAF, "vol_bajar": 0xAE, "silencio": 0xAD,
+    "play": 0xB3, "siguiente": 0xB0, "anterior": 0xB1,
+    # funcion
+    "f4": 0x73, "f5": 0x74, "f11": 0x7A, "imprpant": 0x2C,
+}
+# Letras y digitos: su VK coincide con el ASCII de la mayuscula
+VK.update({c: ord(c.upper()) for c in "abcdefghijklmnopqrstuvwxyz0123456789"})
+
+MODIFICADORES = ("win", "ctrl", "alt", "shift")
 
 # Metricas del escritorio virtual (todos los monitores)
 SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN = 76, 77
@@ -91,18 +106,13 @@ def habilitar_dpi() -> None:
 # --------------------------------------------------------------------------- #
 
 class EntradaWindows:
-    """Metricas de pantalla y envio del atajo de zoom a la ventana activa."""
+    """Metricas de pantalla, cursor, botones y atajos de teclado de Windows."""
 
-    def __init__(self, simular: bool = False, teclado_numerico: bool = False) -> None:
+    def __init__(self, simular: bool = False) -> None:
         self.simular = simular
-        # Algunas aplicaciones solo responden al +/- del teclado numerico.
-        self.vk_mas = VK_ADD if teclado_numerico else VK_OEM_PLUS
-        self.vk_menos = VK_SUBTRACT if teclado_numerico else VK_OEM_MINUS
-
         self._cursor_sim: tuple[int, int] | None = None   # cursor falso en simular
         self.izq_pulsado = False          # estado de los botones, para poder
         self.der_pulsado = False          # soltarlos siempre al terminar
-        self.lupa_abierta = False         # para poder cerrarla nosotros al salir
         self.entrada_bloqueada = False    # True si Windows rechaza SendInput
         self._aviso_bloqueo = False       # el aviso se imprime una sola vez
         if not simular:
@@ -215,56 +225,43 @@ class EntradaWindows:
 
     # -- acciones publicas -------------------------------------------------- #
 
-    def _con_windows(self, vk: int, veces: int = 1) -> None:
-        """Pulsa Win + <tecla>. Siempre se suelta Win, pase lo que pase.
+    def enviar_atajo(self, teclas: tuple[str, ...]) -> bool:
+        """Envia una combinacion de teclas, p. ej. ("win", "arriba").
 
-        Se pulsa otra tecla entre el Win-abajo y el Win-arriba a proposito: si
-        Win se pulsara y soltara sola, Windows abriria el menu Inicio.
+        Los modificadores se mantienen pulsados mientras se teclea el resto y se
+        sueltan siempre en el `finally`: dejar Win o Alt hundidos dejaria el
+        equipo inservible. Devuelve False si alguna tecla no esta en el mapa.
         """
-        self._enviar(self._tecla(VK_LWIN))
+        if not teclas:
+            return False
+        desconocidas = [t for t in teclas if t not in VK]
+        if desconocidas:
+            print(f"AVISO: atajo con teclas desconocidas: {desconocidas}")
+            return False
+
+        if self.simular:
+            print(f"[sim] atajo {'+'.join(teclas)}")
+            return True
+
+        mods = [t for t in teclas if t in MODIFICADORES]
+        resto = [t for t in teclas if t not in MODIFICADORES]
+
+        for m in mods:
+            self._enviar(self._tecla(VK[m]))
         try:
-            for _ in range(veces):
-                self._enviar(self._tecla(vk), self._tecla(vk, soltar=True))
+            for k in resto:
+                self._enviar(self._tecla(VK[k]), self._tecla(VK[k], soltar=True))
         finally:
-            self._enviar(self._tecla(VK_LWIN, soltar=True))
-
-    def zoom(self, clics: int) -> None:
-        """Lupa de Windows: Win + '+' acerca, Win + '-' aleja.
-
-        Amplia toda la pantalla, asi que da igual que ventana este en primer
-        plano. `clics` positivo = acercar, negativo = alejar.
-        """
-        if clics == 0:
-            return
-        if clics > 0:
-            self.lupa_abierta = True      # Win + '+' la abre si estaba cerrada
-        if self.simular:
-            print(f"[sim] lupa {clics:+d}")
-            return
-        self._con_windows(self.vk_mas if clics > 0 else self.vk_menos, abs(clics))
-
-    def cerrar_lupa(self) -> None:
-        """Win + Esc: cierra la lupa y devuelve la pantalla a su tamano normal.
-
-        Solo se envia si fuimos nosotros quienes la abrimos, para no cerrarla si
-        el usuario ya la estaba usando por su cuenta.
-        """
-        if not self.lupa_abierta:
-            return
-        self.lupa_abierta = False
-        if self.simular:
-            print("[sim] cerrar lupa")
-            return
-        try:
-            self._con_windows(VK_ESCAPE)
-        except OSError:
-            pass
+            for m in reversed(mods):      # se sueltan en orden inverso
+                self._enviar(self._tecla(VK[m], soltar=True))
+        return True
 
     def soltar_todo(self) -> None:
-        """Red de seguridad: suelta los botones del raton y la tecla Windows.
+        """Red de seguridad: suelta botones del raton y TODOS los modificadores.
 
-        Dejar un boton hundido bloquearia el equipo (todo seria un arrastre
-        infinito), asi que esto se llama siempre al salir, pase lo que pase.
+        Dejar un boton o un modificador hundido dejaria el equipo inservible
+        (arrastre infinito, o cada tecla convertida en atajo), asi que esto se
+        llama siempre al salir, pase lo que pase.
         """
         try:
             self.boton(derecho=False, presionar=False)
@@ -274,7 +271,8 @@ class EntradaWindows:
         if self.simular:
             print("[sim] soltar_todo")
             return
-        try:
-            self._enviar(self._tecla(VK_LWIN, soltar=True))
-        except OSError:
-            pass
+        for m in MODIFICADORES:
+            try:
+                self._enviar(self._tecla(VK[m], soltar=True))
+            except OSError:
+                pass

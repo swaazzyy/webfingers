@@ -1,9 +1,11 @@
 # Control por gestos de mano (MediaPipe + OpenCV)
 
-Controla Windows con la webcam: el dedo **mueve el cursor real** (air-mouse
-relativo), un gesto **hace clic**, y abrir/cerrar la mano **hace zoom con la Lupa
-de Windows**. Se maneja todo con una **aplicación con ventana** (no consola):
-desde ahí eliges cámara, editas qué hace cada gesto, cambias el tema y arrancas.
+Controla Windows con la webcam: el dedo índice **mueve el cursor real**
+(air-mouse relativo), un gesto **hace clic**, y el resto de gestos lanzan
+**atajos de Windows** que tú eliges — maximizar, minimizar, Alt+Tab, volumen,
+captura de pantalla… Se maneja todo con una **aplicación con ventana** (no
+consola): desde ahí eliges cámara, asignas atajos a cada gesto, cambias el tema
+y arrancas.
 
 ## La aplicación
 
@@ -11,13 +13,16 @@ Doble clic en **`Gestos.vbs`** (o `iniciar.bat`) y se abre la ventana:
 
 ![launcher](launcher_oscuro.png)
 
-- **Editor de gestos** — cada forma de la mano tiene un desplegable para elegir
-  qué hace. ¿Prefieres el clic derecho en "3 dedos"? Lo cambias ahí.
-- **Sensibilidad** — velocidad y aceleración del cursor con dos deslizadores.
+- **Editor de gestos** — cada forma de la mano, con su icono, tiene un
+  desplegable para elegir qué hace. Sirve además de chuleta: la ventana de
+  detección no muestra texto.
+- **Recuadro de atajo** en cada gesto — púlsalo y teclea la combinación, como
+  los keybinds de Discord. Funciona con la tecla Windows.
+- **Puntero** — velocidad y aceleración con dos deslizadores.
 - **Cámara** — compartir con otras apps y si preguntar qué cámara en cada arranque.
 - **Tema claro / oscuro** — botón arriba a la derecha.
 - **Iniciar / Detener** — arranca la detección en una ventana aparte; púlsalo otra
-  vez para pararla.
+  vez para pararla. El punto de la esquina se pone verde mientras está en marcha.
 
 Todo se guarda en `config.json` (junto al programa) al pulsar **Guardar** o
 **Iniciar**. **Restablecer** vuelve a los valores de fábrica.
@@ -27,15 +32,15 @@ Todo se guarda en `config.json` (junto al programa) al pulsar **Guardar** o
 Los gestos se distinguen por el **número de dedos estirados** — cuentas dedos y
 ya está. Este es el mapa por defecto; **todo es editable** en la aplicación.
 
-| Gesto | Qué hace por defecto |
-|:---:|---|
-| ☝️ **1 dedo** (índice) | **mueve el cursor** de Windows |
-| ✌️ **2 dedos** (índice + medio) | **clic izquierdo** — mantén y mueve para **arrastrar** |
-| 🖖 **3 dedos** | *(sin asignar — libre para lo que quieras)* |
-| 👍 **pulgar arriba** | **clic derecho** |
-| ✋ **mano abierta** | **acercar** con la Lupa, sostenido |
-| ✊ **puño** | **alejar** con la Lupa, sostenido |
-| 🤙 **pulgar + meñique** | mantén **1,2 s**: activa/desactiva el control |
+| Gesto | Qué hace por defecto | Atajo |
+|:---:|---|---|
+| ☝️ **1 dedo** (índice) | **mueve el cursor** de Windows | — |
+| ✌️ **2 dedos** (índice + medio) | **clic izquierdo** — mantén y mueve para **arrastrar** | — |
+| 🖖 **3 dedos** | **cambiar de aplicación** | `Alt`+`Tab` |
+| 👍 **pulgar arriba** | **clic derecho** | — |
+| ✋ **mano abierta** | **maximizar / pantalla completa** | `Win`+`↑` |
+| ✊ **puño** | **minimizar ventana** | `Win`+`↓` |
+| 🤙 **pulgar + meñique** | mantén **1,2 s**: activa/desactiva el control | — |
 
 En la ventana de detección **no aparece ningún texto**: solo el esqueleto de la
 mano y la diana del puntero. **Salir de la detección:** tecla `q`/`ESC` o el
@@ -46,9 +51,10 @@ lo mismo.
 
 - [launcher.py](launcher.py) — la aplicación con ventana (GUI): editor, tema, arranque
 - [gestos_manos.py](gestos_manos.py) — detección, clasificación y bucle principal
-- [control_windows.py](control_windows.py) — movimiento del cursor y zoom (SendInput)
+- [control_windows.py](control_windows.py) — cursor, clics y atajos (SendInput)
 - [camara.py](camara.py) — detección de cámaras, menú de selección y compartir
-- [config.py](config.py) — guardar/cargar `config.json` (gestos, tema, sensibilidad)
+- [config.py](config.py) — `config.json`: gestos, atajos propios, tema, sensibilidad
+- [grabador.py](grabador.py) — captura la combinación de teclas que grabas
 - `Gestos.vbs` — abre la GUI sin consola; `iniciar.bat` es la alternativa
 
 ## Instalación
@@ -184,10 +190,26 @@ la aceleración del ratón de Windows:
 - **Movimiento rápido** → avanza mucho (ganancia efectiva ~4,8): cruzas la
   pantalla de un manotazo.
 
-Además, la punta del dedo pasa por un **suavizado adaptativo** (estilo filtro
-1-euro): filtra mucho cuando la mano casi no se mueve, quitando el temblor del
-landmark, y casi nada en gestos rápidos, sin añadir retraso. Con la mano quieta,
-el cursor apenas deriva un par de píxeles.
+Además, la punta del dedo pasa por un **filtro One-Euro**, el estándar para
+punteros interactivos porque resuelve el dilema *temblor vs. retraso*: adapta su
+frecuencia de corte a la velocidad. Con la mano quieta filtra fuerte y se come el
+ruido del landmark; en movimiento apenas filtra y sigue al dedo sin arrastre. Un
+suavizado fijo no puede hacer las dos cosas: o tiembla, o va con retraso.
+
+Trabaja con **tiempo real** (`dt`), así que el tacto no cambia si bajan los FPS,
+y en **coordenadas normalizadas**, para que una webcam de 640 y otra de 1920
+filtren igual.
+
+Sus tres parámetros se eligieron por **barrido empírico**, no a ojo: se probaron
+60 combinaciones contra ruido realista a 30 fps y el ganador se validó con 5
+semillas distintas. Frente al suavizado fijo anterior:
+
+| Métrica (pantalla 1080p) | Antes | Ahora |
+|---|---:|---:|
+| Vibración con la mano quieta | 0,63 px/frame | **0,02 px/frame** |
+| Deriva máxima en reposo | 4,0 px | **1,0 px** |
+| Retraso al parar la mano | 31 frames (~1 s) | **8 frames** |
+| Error en trazo lento | 1,5 px | **1,0 px** |
 
 **El movimiento lento se acumula, no se pierde.** Un gesto lento reparte muy
 pocos píxeles por frame, y cada uno cae por debajo de la zona muerta. Si se
@@ -249,31 +271,71 @@ gesto mantenido.
 **Seguridad:** el botón nunca se queda hundido. Se suelta al perder la mano, al
 apagar el control, al cambiar de gesto y al salir del programa (`soltar_todo`).
 
-## El zoom: la Lupa de Windows
+## Asignar atajos (como los keybinds de Discord)
 
-- **Mano abierta** ✋ → **acercar**.
-- **Puño** ✊ → **alejar**.
+Cada gesto tiene a la derecha un **recuadro con su combinación de teclas**.
+Púlsalo, teclea lo que quieras — **incluida la tecla Windows** — y queda
+asignado al instante. Sin diálogos ni pasos intermedios. La ✕ deja el gesto sin
+asignar, y `Esc` cancela la grabación.
 
-Se envía `Win` + `+` / `Win` + `-`, que controla la **Lupa de Windows**: la
-función de zoom nativa del sistema. Amplía **toda la pantalla**, así que funciona
-en cualquier aplicación, en el escritorio y hasta en los menús — da igual qué
-ventana tengas seleccionada.
+Se guardan en `config.json`; el identificador se deriva de las propias teclas,
+así que grabar dos veces la misma combinación no crea duplicados.
 
-Antes esto era `Ctrl` + `+`/`-`, el zoom interno de cada app. Tenía dos pegas
-que la Lupa elimina: solo funcionaba donde estuviera implementado (nada en el
-Escritorio, el menú Inicio o muchas apps), y obligaba a tener esa ventana en
-primer plano — lo que chocaba con la propia ventana de la cámara.
+**Por qué funciona con la tecla Windows.** Windows se queda para sí las
+combinaciones con `Win` (`Win`+`↑`, `Win`+`D`, `Win`+`L`…) y **nunca llegan a la
+aplicación**: con un `bind` normal de tkinter, intentar grabar `Win`+`↑` te
+maximizaría la propia ventana de grabación. Por eso se usa un hook
+`WH_KEYBOARD_LL`, que ve las teclas antes que el sistema y se las traga mientras
+grabas.
 
-Mientras mantienes el gesto se envía un paso al empezar y luego uno cada
-`ZOOM_INTERVALO` segundos. Pasar de palma a puño invierte el sentido al instante.
+Está verificado de verdad: el test inyecta `Win`+`F9`, `Ctrl`+`F9` y
+`Ctrl`+`Shift`+`F9` reales y comprueba que el hook los captura.
 
-Al cerrar el programa se envía `Win` + `Esc` para **cerrar la Lupa y devolver la
-pantalla a su tamaño normal** — pero solo si fuimos nosotros quienes la abrimos,
-para no cerrártela si ya la estabas usando por tu cuenta. Se desactiva con
-`CERRAR_LUPA_AL_SALIR = False`.
+**El hook no toca la interfaz.** Se ejecuta *dentro* del despacho de mensajes de
+Windows, y Tcl/tkinter no es reentrante: llamar a la GUI desde ahí —o
+desinstalar el propio hook desde dentro de sí mismo— tumbaba el proceso con un
+fallo que Python ni siquiera puede capturar. Por eso el hook **solo deja el
+resultado en un atributo**, y la ventana lo recoge cada 30 ms desde su propio
+bucle. Ahí sí es seguro guardar, repintar y desinstalar.
 
-Un detalle de implementación: al pulsar `Win` siempre se pulsa otra tecla antes
-de soltarla. Si `Win` se pulsara y soltara sola, Windows abriría el menú Inicio.
+> **Dos bugs que costó encontrar:**
+> 1. Al instalar el hook se pasaba el handle del módulo y, sin declarar las
+>    firmas de ctypes, se truncaba de 64 a 32 bits. Fallaba con el error 126 y
+>    parecía que el sistema lo prohibía. Con `hMod = None` funciona.
+> 2. El hook llamaba directamente a tkinter y se desinstalaba a sí mismo desde
+>    dentro del callback: **la app se cerraba al asignar cualquier atajo**. La
+>    prueba `test_asignar` encadena cuatro asignaciones con el `mainloop` real
+>    —incluyendo una letra suelta y `Win`+`↑`— para que no vuelva a colarse.
+
+## Catálogo de atajos incluidos
+
+Además de los tuyos, cada gesto puede lanzar cualquiera de los **32 atajos
+predefinidos**, agrupados por categoría:
+
+| Categoría | Ejemplos |
+|---|---|
+| **Ventanas** | maximizar `Win`+`↑`, minimizar `Win`+`↓`, acoplar a izquierda/derecha, cerrar `Alt`+`F4`, pantalla completa `F11` |
+| **Cambiar de app** | Alt+Tab, vista de tareas, mostrar escritorio, escritorio virtual anterior/siguiente |
+| **Sistema** | Explorador, Configuración, buscar, bloquear, recorte de pantalla, panel de emoji |
+| **Edición** | copiar, pegar, deshacer, rehacer, seleccionar todo, guardar |
+| **Multimedia** | subir/bajar volumen, silenciar, reproducir/pausar, pista siguiente/anterior |
+| **Navegador** | pestaña nueva, cerrar pestaña, recargar |
+
+**Se disparan una sola vez.** Hay que mantener el gesto 0,35 s y luego **soltarlo
+para volver a lanzarlo**. Esto es deliberado: un atajo repitiéndose cada pocas
+décimas sería desastroso — imagina "cerrar ventana" en bucle.
+
+Añadir uno al catálogo predefinido es **una línea** en el diccionario `ATAJOS`
+de [config.py](config.py): id, etiqueta con emoji y las teclas. Ni la detección
+ni la GUI necesitan cambios. (Para uso normal no hace falta: grábalo desde la
+aplicación.)
+
+Detalle de implementación: los modificadores (`Win`, `Alt`, `Ctrl`, `Shift`) se
+sueltan siempre en un `finally`, y al salir del programa se sueltan todos. Dejar
+`Win` o `Alt` hundidos dejaría el equipo inservible.
+
+> Antes esto era la **Lupa de Windows** (zoom de toda la pantalla). Se quitó: lo
+> útil no era agrandar, sino maximizar la ventana y cambiar de aplicación.
 
 ## Ajustes de rendimiento
 
@@ -296,10 +358,8 @@ Todo está agrupado en el bloque *Configuración* al inicio de
   arrastre. `ESTABILIDAD_CLIC_DER` — cuánto hay que mantener 👍.
 - `VENTANA_SUAVIZADO` — frames del voto mayoritario; subirlo da gestos más
   estables (menos clics accidentales) a costa de algo de retraso.
-- `ZOOM_INTERVALO` — cadencia del zoom mientras mantienes la mano abierta o
-  cerrada (más bajo = zoom más rápido).
+- `ESPERA_ATAJO` — cuánto hay que mantener un gesto para lanzar su atajo.
 - `ESPERA_CONTROL` — cuánto hay que mantener 🤙 para activar/desactivar.
-- `CERRAR_LUPA_AL_SALIR` — si al salir se devuelve la pantalla al 100 %.
 - `SIMULAR_ENTRADA = True` — modo seguro: imprime las acciones en vez de
   enviarlas al sistema.
 
@@ -341,7 +401,7 @@ Con pruebas automáticas, sin cámara:
   (vía `--selftest`).
 - Los patrones de dedos con landmarks sintéticos: cada número de dedos da la
   **forma** correcta, no hay patrones duplicados, y con el mapa por defecto cada
-  forma cae en la acción esperada (y ninguna de puntero/clic dispara zoom).
+  forma cae en la acción esperada (y ninguna de ratón se confunde con un atajo).
 - **Config y GUI**: `config.json` se guarda y recarga sin perder nada; una config
   corrupta, incompleta o con valores inválidos se repara a los defaults; y el
   editor de la GUI hace round-trip (lo que pones en los desplegables, los
@@ -354,17 +414,30 @@ Con pruebas automáticas, sin cámara:
   temblor y nunca se sale del escritorio virtual (incluido un segundo monitor con
   coordenadas negativas).
 - **Precisión y robustez del puntero**: la ganancia efectiva es baja en
-  movimientos finos (~1,2) y alta en rápidos (~4,8), el avance por frame crece
-  con la velocidad, un dedo con ruido en reposo apenas mueve el cursor (< 25 px),
-  y un **salto imposible entre frames** (la otra mano) se reancla sin mover el
-  cursor mientras que un gesto rápido plausible sí mueve.
+  movimientos finos y alta en rápidos, el avance por frame crece con la
+  velocidad, un dedo con ruido en reposo apenas mueve el cursor, y un **salto
+  imposible entre frames** (la otra mano) se reancla sin mover el cursor
+  mientras que un gesto rápido plausible sí mueve. Hay además un banco de
+  pruebas que mide temblor, retraso y error de trazo con ruido sintético.
 - **Regresión del movimiento lento**: arrastrar el dedo muy despacio (0,3 px por
   frame) mueve el cursor y da un recorrido comparable al de un gesto normal.
   Antes daba **0 px**: el gesto se perdía entero bajo la zona muerta.
-- Zoom por abrir/cerrar la mano: primer paso inmediato, cadencia mientras se
-  mantiene, inversión instantánea palma↔puño y corte al soltar.
-- **Lupa**: arranca cerrada, acercar la marca como abierta, alejar no la abre,
-  y `cerrar_lupa()` es idempotente (no reenvía `Win`+`Esc` de más).
+- **Atajos**: se disparan al mantener el gesto, **no se repiten** mientras lo
+  sostienes, se rearman al soltarlo, un gesto fugaz no lanza nada, y una tecla
+  desconocida se rechaza en vez de fallar. Todo el catálogo se valida contra el
+  mapa de teclas —así se detectó que `Win`+`.` (panel de emoji) usaba una tecla
+  que faltaba— y cada atajo lleva su emoji.
+- **Grabador, captura REAL**: se inyectan `Win`+`F9`, `Ctrl`+`F9` y
+  `Ctrl`+`Shift`+`F9` de verdad y el hook los captura — incluidas las
+  combinaciones con la tecla Windows, que el sistema normalmente intercepta.
+- **Grabador, lógica**: capta Ctrl+S, Win+↑, Alt+Tab y Ctrl+Shift+M; normaliza el orden
+  de los modificadores (Ctrl+Shift+K == Shift+Ctrl+K); soltar un modificador
+  antes de la tecla lo excluye; Esc solo cancela pero Ctrl+Esc sí se graba; una
+  tecla que la app no sabe reenviar se ignora; y **todo lo grabado se puede
+  volver a enviar**.
+- **Atajos propios**: sobreviven a guardar/cargar, se asignan a un gesto, se
+  resuelven sus teclas, aparecen en su grupo del menú, y un archivo con basura
+  (teclas inventadas, sin nombre, lista vacía) se descarta entero.
 - Que ningún gesto exige estirar el **anular** ni aislar el **meñique**, y que un
   pulgar asomando **de lado** no dispara el clic derecho.
 - **Portabilidad**: el mismo gesto recorre el mismo % de pantalla en 1366×768,
@@ -389,14 +462,15 @@ Con pruebas automáticas, sin cámara:
   el punto pedido (llamada real a `SendInput`, verificada con `GetCursorPos` y
   devolviendo luego el cursor a su sitio).
 - El dispatch del bucle, ahora por **acción**: `mover` desplaza el cursor,
-  `clic_izq` pulsa, `zoom_in`/`zoom_out` hacen zoom, y con el control apagado no
+  `clic_izq` pulsa, los atajos se lanzan, y con el control apagado no
   se mueve nada.
 - `sizeof(INPUT)` correcto en 64 bits.
 
-Sin cámara, **181 comprobaciones en verde** (62 gestos/clics/lupa + 32
+Sin cámara, **233 comprobaciones en verde** (71 gestos/clics/atajos + 35
+config/GUI/atajos propios + 32
 puntero/cursor + 25 cámara/menú/arranque + 21 config/GUI + 12 portabilidad
 + 12 precisión + 9 dispatch + 8 formas), más renders del launcher (temas claro y
-oscuro) y del menú de cámaras. Sin probar: la webcam en vivo, el efecto real de la Lupa y los
+oscuro) y del menú de cámaras. Sin probar: la webcam en vivo, el efecto real de los atajos y los
 clics, y que **tu** cámara concreta acepte el modo compartido (depende del
 driver). Eso hay que ejecutarlo delante de la
 cámara.

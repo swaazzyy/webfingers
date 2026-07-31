@@ -3,19 +3,28 @@
   "gestos": {
     "un_dedo": "mover",
     "dos_dedos": "clic_izq",
-    "tres_dedos": "nada",
-    "pulgar": "clic_der",
-    "mano_abierta": "zoom_in",
-    "puno": "zoom_out",
+    "tres_dedos": "cambiar_app",
+    "pulgar": "propio:win+abajo",
+    "mano_abierta": "maximizar",
+    "puno": "minimizar",
     "pulgar_menique": "alternar"
   },
   "sensibilidad": {
-    "ganancia": 0.8,
+    "ganancia": 2.0,
     "aceleracion": 1.4
   },
   "camara": {
     "indice": null,
     "compartir": true,
     "menu_siempre": false
+  },
+  "atajos_propios": {
+    "propio:win+abajo": {
+      "nombre": "Win + ↓",
+      "teclas": [
+        "win",
+        "abajo"
+      ]
+    }
   }
 }
