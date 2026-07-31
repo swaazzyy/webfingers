@@ -12,7 +12,7 @@
     "espejo": true,
     "estela": true,
     "mostrar_ventana": true,
-    "resolucion": "1920x1080",
+    "resolucion": "960x540",
     "espera_atajo": 0.35,
     "espera_control": 1.2
   },
