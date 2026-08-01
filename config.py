@@ -166,10 +166,17 @@ def grupos(cfg: dict | None = None, t=None) -> list[tuple[str, list[str]]]:
 
 
 def teclas_de(accion: str, cfg: dict | None = None) -> tuple[str, ...] | None:
-    """Combinacion de teclas de una accion, o None si no es un atajo."""
+    """Combinacion de teclas de una accion, o None si no es un atajo.
+
+    `ATAJOS[accion]` YA es la tupla de teclas: devolverla entera. (Antes el
+    valor era `(etiqueta, teclas)` y aqui se hacia `entrada[1]`; al mover la
+    etiqueta a idiomas.py eso paso a devolver una sola tecla como cadena, y
+    como una cadena es iterable la app acababa tecleando sus letras una a una
+    en vez de ejecutar el atajo.)
+    """
     entrada = ATAJOS.get(accion)
-    if entrada:
-        return entrada[1]
+    if entrada is not None:
+        return tuple(entrada)
     propio = (cfg or {}).get("atajos_propios", {}).get(accion)
     return tuple(propio["teclas"]) if propio else None
 

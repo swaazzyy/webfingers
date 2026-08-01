@@ -55,6 +55,21 @@ VK.update({c: ord(c.upper()) for c in "abcdefghijklmnopqrstuvwxyz0123456789"})
 
 MODIFICADORES = ("win", "ctrl", "alt", "shift")
 
+# Teclas EXTENDIDAS: hay que marcarlas con KEYEVENTF_EXTENDEDKEY o Windows las
+# confunde con las del teclado numerico (VK_UP sin este bit se comporta como el
+# 8 del numpad, y por eso Win+Flecha no maximizaba la ventana).
+KEYEVENTF_EXTENDEDKEY = 0x0001
+VK_EXTENDIDAS = {
+    0x25, 0x26, 0x27, 0x28,          # flechas
+    0x21, 0x22, 0x23, 0x24,          # RePag, AvPag, Fin, Inicio
+    0x2D, 0x2E,                      # Insert, Supr
+    0x5B, 0x5C,                      # Win izquierda y derecha
+    0x90,                            # BloqNum
+    0xA3, 0xA5,                      # Ctrl y Alt derechos
+    0xAD, 0xAE, 0xAF,                # volumen
+    0xB0, 0xB1, 0xB2, 0xB3,          # multimedia
+}
+
 # Metricas del escritorio virtual (todos los monitores)
 SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN = 76, 77
 SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 78, 79
@@ -156,9 +171,12 @@ class EntradaWindows:
 
     @staticmethod
     def _tecla(vk: int, soltar: bool = False) -> INPUT:
+        """Evento de teclado, marcando las teclas extendidas como tales."""
+        flags = KEYEVENTF_KEYUP if soltar else 0
+        if vk in VK_EXTENDIDAS:
+            flags |= KEYEVENTF_EXTENDEDKEY
         return INPUT(type=INPUT_TECLADO,
-                     ki=KEYBDINPUT(wVk=vk, wScan=0,
-                                   dwFlags=KEYEVENTF_KEYUP if soltar else 0,
+                     ki=KEYBDINPUT(wVk=vk, wScan=0, dwFlags=flags,
                                    time=0, dwExtraInfo=0))
 
     # -- raton -------------------------------------------------------------- #
@@ -233,6 +251,12 @@ class EntradaWindows:
         equipo inservible. Devuelve False si alguna tecla no esta en el mapa.
         """
         if not teclas:
+            return False
+        # Una CADENA tambien es iterable: si por error llega "arriba" en vez de
+        # ("win", "arriba"), recorrerla teclearia a-r-r-i-b-a. Paso ya vivido:
+        # se rechaza de forma explicita en vez de escribir el nombre del atajo.
+        if isinstance(teclas, str):
+            print(f"AVISO: atajo mal formado (cadena en vez de tupla): {teclas!r}")
             return False
         desconocidas = [t for t in teclas if t not in VK]
         if desconocidas:

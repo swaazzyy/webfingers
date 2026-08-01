@@ -400,6 +400,20 @@ Detalle de implementación: los modificadores (`Win`, `Alt`, `Ctrl`, `Shift`) se
 sueltan siempre en un `finally`, y al salir del programa se sueltan todos. Dejar
 `Win` o `Alt` hundidos dejaría el equipo inservible.
 
+**Teclas extendidas.** Las flechas, `Inicio`/`Fin`, `Supr` y las de volumen se
+envían con el bit `KEYEVENTF_EXTENDEDKEY`. Sin él, Windows interpreta `VK_UP`
+como el **8 del teclado numérico** y `Win`+`↑` no maximiza nada. Hay un test que
+lo comprueba tecla a tecla, y otro que además verifica que una letra normal
+**no** lleve ese bit.
+
+> **Bug que costó un turno:** al mover las etiquetas a `idiomas.py`, `ATAJOS`
+> pasó de `id → (etiqueta, teclas)` a `id → teclas`, pero `teclas_de()` seguía
+> devolviendo `entrada[1]` — es decir, **la segunda tecla como cadena**
+> (`"arriba"`). Y como una cadena es iterable, la app **tecleaba a-r-r-i-b-a**
+> en vez de ejecutar `Win`+`↑`: literalmente transcribía el atajo. Ahora
+> `enviar_atajo` **rechaza explícitamente** recibir una cadena en vez de una
+> tupla, para que este fallo no pueda volver a escribir letras en silencio.
+
 > Antes esto era la **Lupa de Windows** (zoom de toda la pantalla). Se quitó: lo
 > útil no era agrandar, sino maximizar la ventana y cambiar de aplicación.
 
@@ -501,6 +515,10 @@ Con pruebas automáticas, sin cámara:
   antes de la tecla lo excluye; Esc solo cancela pero Ctrl+Esc sí se graba; una
   tecla que la app no sabe reenviar se ignora; y **todo lo grabado se puede
   volver a enviar**.
+- **Ejecución de atajos**: cada atajo del catálogo y cada atajo grabado
+  **envían la combinación correcta** (se espía lo que sale, no solo que no
+  falle); las teclas extendidas llevan su bit y las normales no; y sin config,
+  un atajo propio no se resuelve en vez de inventarse algo.
 - **Instalador**: instala de verdad en una carpeta temporal, copia todos los
   archivos, guarda el idioma elegido y **reinstalar encima conserva los ajustes**.
 - **Ajustes**: los nuevos (idioma, espejo, estela, resolución, tiempos, sonido)
@@ -543,7 +561,7 @@ Con pruebas automáticas, sin cámara:
   se mueve nada.
 - `sizeof(INPUT)` correcto en 64 bits.
 
-Sin cámara, **277 comprobaciones en verde** (73 gestos/clics/atajos + 42
+Sin cámara, **304 comprobaciones en verde** (73 gestos/clics/atajos + 42
 instalador/ajustes/idiomas + 35
 config/GUI/atajos propios + 32
 puntero/cursor + 25 cámara/menú/arranque + 21 config/GUI + 12 portabilidad
