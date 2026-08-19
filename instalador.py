@@ -24,7 +24,7 @@ import sistema
 # asi la app funciona sin conexion desde el primer arranque.
 ARCHIVOS = [
     "launcher.py", "gestos_manos.py", "control_windows.py", "camara.py",
-    "config.py", "grabador.py", "idiomas.py", "sistema.py",
+    "config.py", "grabador.py", "hud.py", "idiomas.py", "sistema.py",
     "requirements.txt", "README.md", "hand_landmarker.task", "Gestos.vbs",
 ]
 

@@ -606,7 +606,7 @@ class Launcher:
         for clave in ("autoarranque", "arrancar_minimizado", "detectar_al_abrir",
                       "confirmar_salida", "sonido"):
             v[clave] = tk.BooleanVar(value=self.cfg["app"][clave])
-        for clave in ("espejo", "estela", "mostrar_ventana"):
+        for clave in ("espejo", "estela", "mostrar_ventana", "hud"):
             v[clave] = tk.BooleanVar(value=self.cfg["deteccion"][clave])
         for clave in ("espera_atajo", "espera_control"):
             v[clave] = tk.DoubleVar(value=self.cfg["deteccion"][clave])
@@ -671,6 +671,7 @@ class Launcher:
         casilla(g2, T("aj_espejo"), v["espejo"])
         casilla(g2, T("aj_estela"), v["estela"])
         casilla(g2, T("aj_ventana"), v["mostrar_ventana"])
+        casilla(g2, T("aj_hud"), v["hud"], T("aj_hud_pista"))
         desplegable(g2, T("aj_resolucion"), v["resolucion"], config.RESOLUCIONES)
 
         # --- Tiempos ---
@@ -709,7 +710,7 @@ class Launcher:
             for clave in ("arrancar_minimizado", "detectar_al_abrir",
                           "confirmar_salida", "sonido"):
                 self.cfg["app"][clave] = bool(v[clave].get())
-            for clave in ("espejo", "estela", "mostrar_ventana"):
+            for clave in ("espejo", "estela", "mostrar_ventana", "hud"):
                 self.cfg["deteccion"][clave] = bool(v[clave].get())
             self.cfg["deteccion"]["resolucion"] = v["resolucion"].get()
             for clave in ("espera_atajo", "espera_control"):

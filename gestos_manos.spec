@@ -64,7 +64,7 @@ coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas, strip=False, upx=True,
 # 2) El instalador: lleva dentro los archivos que va a copiar
 # --------------------------------------------------------------------------- #
 FUENTES = ["launcher.py", "gestos_manos.py", "control_windows.py", "camara.py",
-           "config.py", "grabador.py", "idiomas.py", "sistema.py",
+           "config.py", "grabador.py", "hud.py", "idiomas.py", "sistema.py",
            "requirements.txt", "README.md", "Gestos.vbs"]
 
 datos_inst = [(f, ".") for f in FUENTES]

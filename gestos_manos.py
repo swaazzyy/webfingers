@@ -24,14 +24,17 @@ Cada forma puede lanzar CUALQUIER atajo de Windows (ver el catalogo en
 config.py); los de arriba son solo los que vienen por defecto. El puntero
 siempre se maneja con el dedo indice y eso no se toca.
 
-En pantalla NO se escribe ninguna indicacion: solo se dibuja el esqueleto de la
-mano y la diana del puntero. La chuleta de gestos esta en el README.
+Sobre la imagen se dibuja el esqueleto de la mano, la mira del puntero y un HUD
+con el aire de OBS Studio (ver hud.py): estado del control, la lista de gestos
+con la accion de cada uno y los medidores del puntero. Antes la ventana no
+escribia nada y habia que ir al README a mirar la chuleta.
 
 Uso:
     python gestos_manos.py
 
 Salir: tecla q / ESC, o cerrar la ventana con la X.
 Tecla c: activa/desactiva el control (respaldo del gesto).
+Tecla h: esconde o muestra el HUD.
 
 La primera ejecucion descarga el modelo `hand_landmarker.task` (~7 MB) desde
 el repositorio oficial de MediaPipe y lo deja junto a este script.
@@ -68,6 +71,8 @@ from mediapipe.tasks.python import vision
 
 import camara
 import config
+import hud
+import idiomas
 from control_windows import EntradaWindows
 
 # --------------------------------------------------------------------------- #
@@ -106,6 +111,7 @@ CONTROL_ACTIVO = True      # estado inicial del control
 SIMULAR_ENTRADA = False    # True = solo imprime las acciones, no toca el sistema
 ESPEJO = True              # ver la camara en espejo (lo natural para el usuario)
 MOSTRAR_VENTANA = True     # False = detectar sin ventana de camara
+MOSTRAR_HUD = True         # panel de estado sobre la camara (tecla h)
 SONIDO = True              # pitido al hacer clic o lanzar un atajo
 
 # Gesto mantenido para activar/desactivar el control (pulgar + menique):
@@ -123,12 +129,30 @@ ESPERA_CONTROL = 1.2       # segundos
 # app iba disparada en una pantalla 1080p y lentisima en una 4K.
 GANANCIA_PUNTERO = 2.0     # sensibilidad general (la ajusta el slider de la GUI)
 ACELERACION = 1.4          # empuje extra en gestos rapidos (0 = velocidad constante)
-VEL_ACEL_MAX = 0.05        # fraccion del encuadre por frame donde la acel. topa
+
+# Velocidad del dedo a la que la aceleracion topa, en anchos de encuadre POR
+# SEGUNDO. En segundos y no "por frame" a proposito: el mismo gesto fisico da
+# la misma aceleracion a 15 que a 60 fps. Medido por frame, a 60 fps cada uno
+# recogia la mitad de recorrido que a 30, la curva se quedaba en la parte baja
+# y el cursor iba pesado justo en los equipos rapidos, que es donde menos se
+# espera. (1,5 = cruzar el encuadre y medio en un segundo.)
+VEL_ACEL_MAX = 1.5
 
 # PRECISION: a baja velocidad el cursor avanza solo esta fraccion de la ganancia,
 # para poder apuntar fino; a alta velocidad se suma la aceleracion para llegar
 # lejos. Asi hay precision Y alcance sin elegir uno u otro.
 PRECISION_PUNTERO = 0.45
+
+# --- Compensacion de distancia a la camara --------------------------------- #
+# El recorrido se mide en fraccion del encuadre, asi que la MISMA mano movida
+# lo mismo recorre la mitad de encuadre si te alejas al doble: sentado cerca el
+# puntero volaba y echado hacia atras se arrastraba. Dividiendo por el tamano
+# aparente de la mano (muneca -> nudillo del medio, que ya se calcula para la
+# heuristica) el gesto pasa a medirse en "manos" y deja de depender de a que
+# distancia estes. El factor se acota: una mano medio salida del encuadre da un
+# tamano ridiculo y sin tope multiplicaria el ruido por diez.
+ESCALA_MANO_REF = 0.13     # tamano tipico de la mano (fraccion del ancho)
+COMP_DISTANCIA = (0.75, 1.5)   # limites del factor de compensacion
 
 # --- Filtro One-Euro para la punta del dedo -------------------------------- #
 # Es el filtro estandar para punteros interactivos porque resuelve el dilema
@@ -149,6 +173,14 @@ EURO_DCUTOFF = 0.7         # Hz para suavizar la estimacion de velocidad
 SALTO_MAX = 0.35
 
 ZONA_MUERTA = 0.0008       # fraccion del encuadre por debajo de la cual no se mueve
+
+# Punto con el que se apunta. La punta del indice es el landmark que mas baila:
+# esta al final de la cadena y arrastra el error de todas las articulaciones
+# anteriores. La falange de antes (DIP) se desplaza con ella cuando la mano se
+# mueve, pero con bastante menos ruido, asi que se apunta con una mezcla de las
+# dos: el gesto se conserva entero y el temblor baja. Un poco de peso en la DIP
+# tambien evita que doblar el dedo (no mover la mano) desplace el cursor.
+MEZCLA_PUNTA = 0.7         # peso de la punta; el resto va a la falange DIP
 
 # --- Clics ------------------------------------------------------------------ #
 # Los clics se distinguen por el NUMERO de dedos estirados, no por distancias
@@ -231,13 +263,18 @@ COLOR_ACCION = {
 }
 COLOR_ATAJO = (60, 200, 60)              # verde para cualquier atajo de Windows
 
+# Trazo oscuro que se dibuja debajo de todo lo demas. Un dibujo de un solo tono
+# desaparece en cuanto el fondo se le parece, y el fondo aqui es lo que haya en
+# la habitacion; con el contorno hay contraste pase lo que pase.
+SOMBRA = (16, 16, 16)
+
 # --------------------------------------------------------------------------- #
 # Indices de landmarks (mapa de 21 puntos de MediaPipe Hands)
 # --------------------------------------------------------------------------- #
 
 MUNECA = 0
 PULGAR_MCP, PULGAR_IP, PULGAR_TIP = 2, 3, 4
-INDICE_MCP, INDICE_TIP = 5, 8
+INDICE_MCP, INDICE_DIP, INDICE_TIP = 5, 7, 8
 MEDIO_MCP, MEDIO_TIP = 9, 12
 MENIQUE_MCP = 17
 
@@ -297,6 +334,17 @@ def escala_mano(pts: list[tuple[float, float]]) -> float:
     return distancia(pts[MUNECA], pts[MEDIO_MCP]) or 1.0
 
 
+def punta_apuntado(pts: list[tuple[float, float]]) -> tuple[float, float]:
+    """Punto con el que se apunta: punta del indice mezclada con su falange DIP.
+
+    Ver `MEZCLA_PUNTA`: la punta sola es el landmark mas ruidoso de la mano.
+    """
+    tx, ty = pts[INDICE_TIP]
+    dx, dy = pts[INDICE_DIP]
+    resto = 1.0 - MEZCLA_PUNTA
+    return (tx * MEZCLA_PUNTA + dx * resto, ty * MEZCLA_PUNTA + dy * resto)
+
+
 def dedos_extendidos(pts: list[tuple[float, float]]) -> tuple[bool, ...]:
     """Devuelve (pulgar, indice, medio, anular, menique) como booleanos.
 
@@ -350,10 +398,13 @@ class SuavizadorGesto:
 
     def __init__(self, ventana: int = VENTANA_SUAVIZADO) -> None:
         self._historial: deque[str] = deque(maxlen=ventana)
+        self.confianza = 0.0       # parte de la ventana que voto lo mismo (0..1)
 
     def actualizar(self, gesto: str) -> str:
         self._historial.append(gesto)
-        return Counter(self._historial).most_common(1)[0][0]
+        ganador, votos = Counter(self._historial).most_common(1)[0]
+        self.confianza = votos / len(self._historial)
+        return ganador
 
 
 class AccionSostenida:
@@ -449,6 +500,11 @@ class ControlPuntero:
         self._filtro_x = UnEuro(EURO_MINCUTOFF, EURO_BETA, EURO_DCUTOFF)
         self._filtro_y = UnEuro(EURO_MINCUTOFF, EURO_BETA, EURO_DCUTOFF)
         self._t_previo: float | None = None
+        # Solo informativos, para que el HUD y la mira pinten lo que esta
+        # pasando sin recalcularlo por su cuenta (y sin poder desviarse).
+        self.velocidad = 0.0       # anchos de encuadre por segundo, ya filtrada
+        self.empuje = 0.0          # multiplicador de ganancia de este frame
+        self.avance = 0.0          # 0 = apuntando fino, 1 = aceleracion al tope
 
     def reiniciar(self) -> None:
         """Suelta el enganche con el dedo (efecto embrague).
@@ -461,14 +517,28 @@ class ControlPuntero:
         self._filtro_x.reiniciar()
         self._filtro_y.reiniciar()
         self._t_previo = None
+        self.velocidad = self.empuje = self.avance = 0.0
 
     def actualizar(self, punta: tuple[float, float], ancho: int, alto: int,
-                   mover: bool = True, dt: float | None = None) -> tuple[int, int]:
+                   mover: bool = True, dt: float | None = None,
+                   escala: float | None = None,
+                   descartar: bool = True) -> tuple[int, int]:
         """Desplaza el cursor segun cuanto se movio el dedo. Devuelve (x, y).
 
         Con `mover=False` se sigue el dedo pero el cursor se queda quieto: es lo
         que congela el puntero mientras haces clic, para que no se desplace por
         el propio gesto de juntar los dedos.
+
+        `descartar` decide que pasa con el movimiento lento que hubiera pendiente
+        mientras esta congelado. Al hacer clic se tira (es el gesto de la mano
+        cerrandose, y soltarlo despues daria un tiron), pero si el puntero se
+        congela solo un frame o dos —porque la forma esta cambiando o porque un
+        frame se detecto mal— tirarlo se comeria un arrastre lento que si era
+        intencionado, y el cursor se quedaria clavado al apuntar con cuidado.
+
+        `escala` es el tamano aparente de la mano en pixeles (ver `escala_mano`)
+        y sirve para compensar la distancia a la camara. Si no se pasa, el tacto
+        es el de antes: proporcional al encuadre.
 
         `dt` (segundos desde el frame anterior) se mide solo, pero se puede
         inyectar para poder medir el filtro a una cadencia concreta en pruebas.
@@ -493,18 +563,19 @@ class ControlPuntero:
         # no depende de la resolucion de la webcam).
         bruto_x = (punta[0] - self._dedo[0]) / ancho
         bruto_y = (punta[1] - self._dedo[1]) / alto
-        vel = math.hypot(bruto_x, bruto_y)
+        salto = math.hypot(bruto_x, bruto_y)
 
         # Rechazo de saltos: un desplazamiento imposible en un frame es un glitch
         # o que MediaPipe cambio de mano. Se reancla a la nueva punta y no se
         # mueve el cursor, evitando el latigazo hacia la otra mano.
-        if vel > SALTO_MAX:
+        if salto > SALTO_MAX:
             self._dedo = punta
             self._resto_x = self._resto_y = 0.0   # lo pendiente ya no vale
             self._filtro_x.reiniciar()
             self._filtro_y.reiniciar()
             self._filtro_x.filtrar(punta[0] / ancho, dt)
             self._filtro_y.filtrar(punta[1] / alto, dt)
+            self.velocidad = self.empuje = self.avance = 0.0
             return int(round(self._x)), int(round(self._y))
 
         # Filtro One-Euro: quieto filtra fuerte (sin temblor), en movimiento
@@ -521,8 +592,26 @@ class ControlPuntero:
         fy = (sy - self._dedo[1]) / alto
         self._dedo = (sx, sy)
 
-        if not mover:                     # congelado (clic): se descarta el gesto
-            self._resto_x = self._resto_y = 0.0
+        # Compensacion de distancia: el mismo gesto fisico mide menos encuadre
+        # cuanto mas lejos estas de la camara. Dividir por el tamano aparente de
+        # la mano lo devuelve a una escala fija (ver ESCALA_MANO_REF).
+        if escala:
+            comp = recortar(ESCALA_MANO_REF / (escala / ancho),
+                            COMP_DISTANCIA[0], COMP_DISTANCIA[1])
+            fx *= comp
+            fy *= comp
+
+        # Velocidad para la curva de ganancia: se mide sobre la senal YA
+        # filtrada y en anchos de encuadre POR SEGUNDO. Antes se media sobre la
+        # senal cruda, asi que el ruido del landmark con la mano quieta marcaba
+        # "velocidad alta" y metia la aceleracion justo cuando se quiere apuntar
+        # fino: el temblor entraba multiplicado en vez de reducido.
+        self.velocidad = math.hypot(fx, fy) / dt
+
+        if not mover:                     # congelado: el cursor no se mueve
+            if descartar:
+                self._resto_x = self._resto_y = 0.0
+            self.empuje = self.avance = 0.0
             return int(round(self._x)), int(round(self._y))
 
         # El desplazamiento se ACUMULA en un residuo antes de aplicarse. Es lo
@@ -542,11 +631,12 @@ class ControlPuntero:
         # Curva de ganancia: a baja velocidad solo PRECISION_PUNTERO de la
         # ganancia (control fino); a alta velocidad se suma la aceleracion para
         # cruzar la pantalla. El exponente hace que la subida sea suave al
-        # principio y agresiva al final. Se mide con la velocidad instantanea
-        # (`vel`), no con el residuo, para que acumular no parezca "ir rapido".
-        factor = recortar(vel / VEL_ACEL_MAX, 0.0, 1.0) ** 1.5
+        # principio y agresiva al final. Se mide con la velocidad instantanea,
+        # no con el residuo, para que acumular no parezca "ir rapido".
+        factor = recortar(self.velocidad / VEL_ACEL_MAX, 0.0, 1.0) ** 1.5
         empuje = GANANCIA_PUNTERO * (
             PRECISION_PUNTERO + (1.0 - PRECISION_PUNTERO + ACELERACION) * factor)
+        self.empuje, self.avance = empuje, factor
 
         # De fraccion de encuadre a pixeles de pantalla. Cada eje se escala con
         # su propia dimension para alcanzar los bordes aunque la camara y la
@@ -629,6 +719,17 @@ class ControlAtajos:
         self._accion = None
         self._disparado = False
 
+    def progreso(self) -> float:
+        """Cuanto falta para que salte el atajo en curso (0..1).
+
+        Solo informativo: lo pinta el HUD debajo de la fila del gesto, para que
+        se vea que la espera esta corriendo y no que no te esta reconociendo.
+        """
+        if self._accion is None or self._disparado or ESPERA_ATAJO <= 0:
+            return 0.0
+        return recortar((time.perf_counter() - self._t0) / ESPERA_ATAJO,
+                        0.0, 1.0)
+
     def actualizar(self, accion: str | None, aplicar: bool = True) -> str | None:
         """Devuelve el id del atajo lanzado en este frame, o None."""
         if accion != self._accion:         # cambio de gesto: rearmar
@@ -656,34 +757,125 @@ class ControlAtajos:
 # Dibujo sobre el frame de la camara
 # --------------------------------------------------------------------------- #
 
+def escala_dibujo(frame) -> float:
+    """Factor de tamano del dibujo: 1.0 con un encuadre de 540 px de alto.
+
+    Sin esto, la mira medida en pixeles fijos salia enorme en 480p y quedaba
+    como una pulga en 1080p. Se acota para que ni desaparezca ni tape la mano.
+    """
+    return recortar(frame.shape[0] / 540.0, 0.75, 2.0)
+
+
 def dibujar_esqueleto(frame, pts: list[tuple[float, float]], color) -> None:
-    """Dibuja huesos y articulaciones de la mano con primitivas de OpenCV."""
+    """Dibuja huesos y articulaciones de la mano con primitivas de OpenCV.
+
+    Los huesos van con un trazo oscuro debajo: la mano suele estar iluminada y
+    un hueso blanco sobre piel clara se pierde justo cuando mas se mira.
+    """
+    e = escala_dibujo(frame)
+    grosor = max(1, int(round(2 * e)))
     enteros = [(int(x), int(y)) for x, y in pts]
     for i, j in CONEXIONES:
-        cv2.line(frame, enteros[i], enteros[j], (245, 245, 245), 2, cv2.LINE_AA)
+        cv2.line(frame, enteros[i], enteros[j], SOMBRA, grosor + 2, cv2.LINE_AA)
+    for i, j in CONEXIONES:
+        cv2.line(frame, enteros[i], enteros[j], (245, 245, 245), grosor,
+                 cv2.LINE_AA)
     for p in enteros:
-        cv2.circle(frame, p, 4, color, -1, cv2.LINE_AA)
+        cv2.circle(frame, p, max(2, int(round(4 * e))) + 1, SOMBRA, -1,
+                   cv2.LINE_AA)
+        cv2.circle(frame, p, max(2, int(round(4 * e))), color, -1, cv2.LINE_AA)
 
 
-def dibujar_puntero(frame, punta: tuple[float, float], color) -> None:
-    """Diana sobre la punta del indice, como referencia en la vista de camara."""
-    x, y = int(punta[0]), int(punta[1])
-    cv2.circle(frame, (x, y), 14, color, 2, cv2.LINE_AA)
-    cv2.circle(frame, (x, y), 3, color, -1, cv2.LINE_AA)
+def dibujar_puntero(frame, punta: tuple[float, float], color, *,
+                    avance: float = 0.0, pulsando: bool = False,
+                    arrastrando: bool = False, congelado: bool = False) -> None:
+    """Mira de precision sobre el punto con el que se apunta.
+
+    No es decoracion: en un vistazo dice las cuatro cosas que importan mientras
+    apuntas sin mirarte la mano.
+
+      - el CENTRO, un punto de 1-2 px, es el sitio exacto que se esta midiendo;
+        la diana anterior era un circulo de 14 px y no se sabia si el puntero
+        salia del centro o del borde;
+      - el ANILLO segmentado deja ver la imagen por los huecos, asi que no tapa
+        lo que estas senalando, y gira cuando estas arrastrando;
+      - el ARCO interior es la ganancia que aplica la curva de aceleracion: casi
+        cerrado apuntas fino, completo vas a toda velocidad, y asi se entiende
+        por que el cursor a veces vuela y a veces no;
+      - las ESQUINAS aparecen cuando el puntero esta congelado (en un clic o
+        cambiando de gesto), que si no parece que la app se ha colgado.
+
+    Todo se dibuja dos veces, primero oscuro y mas grueso, para que se lea igual
+    sobre una pared blanca que sobre una sudadera negra.
+    """
+    e = escala_dibujo(frame)
+    x, y = int(round(punta[0])), int(round(punta[1]))
+    r = int(round(13 * e))
+    grosor = max(1, int(round(1.6 * e)))
+    # Al pulsar, un disco tenue rellena la mira: se ve que el boton esta hundido
+    # aunque el cursor este quieto en otra pantalla.
+    if pulsando:
+        hud.disco_translucido(frame, (x, y), r, color, 0.3)
+    # El anillo gira solo mientras arrastras (a 90 grados por segundo), que es
+    # el unico estado que no se distingue del clic por el color.
+    giro = (time.perf_counter() * 90.0) % 360.0 if arrastrando else 0.0
+
+    for tono, extra in ((SOMBRA, 2), (color, 0)):
+        g = grosor + extra
+        for arco in (0, 90, 180, 270):     # 4 arcos con hueco en los ejes
+            cv2.ellipse(frame, (x, y), (r, r), giro, arco + 12, arco + 78,
+                        tono, g, cv2.LINE_AA)
+
+        # Marcas de los ejes, hacia fuera y fijas (no giran: son la referencia)
+        sep, largo = r + int(round(3 * e)), int(round(6 * e))
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            cv2.line(frame, (x + dx * sep, y + dy * sep),
+                     (x + dx * (sep + largo), y + dy * (sep + largo)),
+                     tono, g, cv2.LINE_AA)
+
+        # Arco de ganancia: de las 12 en punto y en el sentido del reloj
+        if avance > 0.02:
+            ri = max(2, int(round(r * 0.55)))
+            cv2.ellipse(frame, (x, y), (ri, ri), 0, -90,
+                        -90 + int(360 * recortar(avance, 0.0, 1.0)),
+                        tono, g, cv2.LINE_AA)
+
+        # Esquinas de "puntero retenido"
+        if congelado:
+            d, b = int(round(r + 8 * e)), int(round(5 * e))
+            for sx in (-1, 1):
+                for sy in (-1, 1):
+                    cx, cy = x + sx * d, y + sy * d
+                    cv2.line(frame, (cx, cy), (cx - sx * b, cy), tono, g,
+                             cv2.LINE_AA)
+                    cv2.line(frame, (cx, cy), (cx, cy - sy * b), tono, g,
+                             cv2.LINE_AA)
+
+        # El punto exacto, lo ultimo y encima de todo
+        cv2.circle(frame, (x, y), max(1, int(round(1.5 * e))) + extra, tono, -1,
+                   cv2.LINE_AA)
 
 
 def dibujar_estela(frame, puntos, color) -> None:
-    """Rastro del dedo en la vista de camara: se estrecha y apaga hacia atras."""
+    """Rastro del dedo en la vista de camara: se estrecha y apaga hacia atras.
+
+    En dos pasadas y no en una: con el contorno oscuro pegado a cada tramo, el
+    tramo siguiente pintaba su sombra encima del anterior y la estela salia a
+    rayas. Primero toda la sombra, luego todo el color.
+    """
     if len(puntos) < 2:
         return
-    n = len(puntos) - 1
-    for i in range(n):
-        t = (i + 1) / n                   # 1 = punta (el dedo), 0 = cola
-        grosor = max(1, int(GROSOR_ESTELA * t))
+    e = escala_dibujo(frame)
+    enteros = [(int(p[0]), int(p[1])) for p in puntos]
+    n = len(enteros) - 1
+    grosores = [max(1, int(round(GROSOR_ESTELA * e * ((i + 1) / n))))
+                for i in range(n)]        # 1 = punta (el dedo), 0 = cola
+    for i, g in enumerate(grosores):
+        cv2.line(frame, enteros[i], enteros[i + 1], SOMBRA, g + 2, cv2.LINE_AA)
+    for i, g in enumerate(grosores):
+        t = (i + 1) / n
         tono = tuple(int(c * (0.35 + 0.65 * t)) for c in color)
-        cv2.line(frame, (int(puntos[i][0]), int(puntos[i][1])),
-                 (int(puntos[i + 1][0]), int(puntos[i + 1][1])),
-                 tono, grosor, cv2.LINE_AA)
+        cv2.line(frame, enteros[i], enteros[i + 1], tono, g, cv2.LINE_AA)
 
 
 # --------------------------------------------------------------------------- #
@@ -789,7 +981,7 @@ def aplicar_config(cfg: dict) -> dict:
     """
     global GANANCIA_PUNTERO, ACELERACION
     global INDICE_CAMARA, COMPARTIR_CAMARA, MENU_CAMARA_SIEMPRE
-    global ANCHO, ALTO, ESPEJO, LARGO_ESTELA, MOSTRAR_VENTANA
+    global ANCHO, ALTO, ESPEJO, LARGO_ESTELA, MOSTRAR_VENTANA, MOSTRAR_HUD
     global ESPERA_ATAJO, ESPERA_CONTROL, SONIDO
 
     GANANCIA_PUNTERO = cfg["sensibilidad"]["ganancia"]
@@ -802,6 +994,7 @@ def aplicar_config(cfg: dict) -> dict:
     ANCHO, ALTO = (int(v) for v in d["resolucion"].split("x"))
     ESPEJO = d["espejo"]
     MOSTRAR_VENTANA = d["mostrar_ventana"]
+    MOSTRAR_HUD = d["hud"]
     LARGO_ESTELA = 26 if d["estela"] else 0
     ESPERA_ATAJO = d["espera_atajo"]
     ESPERA_CONTROL = d["espera_control"]
@@ -840,13 +1033,30 @@ def main(cfg: dict | None = None) -> None:
     control = CONTROL_ACTIVO
     t_inicio = time.perf_counter()
 
+    # Panel de estado sobre la camara. Se construye siempre (cuesta nada) para
+    # poder encenderlo con la tecla h aunque arranque apagado en los ajustes.
+    panel = hud.HUD(idiomas.Textos(cfg["idioma"]), mapa, cfg)
+    panel.visible = MOSTRAR_HUD
+
     try:
         with crear_detector() as detector:
+            # Aqui y no antes: cargar el modelo tarda un segundo largo y ese
+            # hueco no es un frame lento, contarlo dejaria el marcador de fps
+            # arrancando desde cero.
+            t_frame = time.perf_counter()
             while True:
                 ok, frame = cap.read()
                 if not ok:
                     print("Frame no valido; se corta la captura.")
                     break
+
+                # Reloj del frame: `dt` es el hueco real entre imagenes (lo que
+                # marca el tacto del filtro) y `t_proceso` lo que cuesta todo lo
+                # que viene despues. El HUD los ensena por separado porque si
+                # los fps caen pero el proceso sigue rapido, el problema es la
+                # camara y no el equipo.
+                ahora = time.perf_counter()
+                dt_frame, t_frame = ahora - t_frame, ahora
 
                 if ESPEJO:
                     frame = cv2.flip(frame, 1)
@@ -868,19 +1078,23 @@ def main(cfg: dict | None = None) -> None:
                 resultado = detector.detect_for_video(imagen, ts_ms)
 
                 # --- Clasificacion: forma -> accion segun la config -------- #
-                # Solo se dibuja el esqueleto; ninguna indicacion escrita.
                 accion_principal = NADA
+                accion_cruda = NADA             # la forma de ESTE frame, sin voto
+                forma_principal = DESCONOCIDO
                 pts_principal = None            # landmarks de la primera mano
 
                 if resultado.hand_landmarks:
                     for i, landmarks in enumerate(resultado.hand_landmarks):
                         pts = a_pixeles(landmarks, ancho, alto)
-                        forma = clasificar_gesto(dedos_extendidos(pts), pts)
+                        cruda = clasificar_gesto(dedos_extendidos(pts), pts)
+                        forma = cruda
                         if i < len(suavizadores):
-                            forma = suavizadores[i].actualizar(forma)
+                            forma = suavizadores[i].actualizar(cruda)
                         accion = mapa.get(forma, NADA)
                         if i == 0:
                             accion_principal, pts_principal = accion, pts
+                            forma_principal = forma
+                            accion_cruda = mapa.get(cruda, NADA)
                         color_mano = (COLOR_ACCION.get(accion) or COLOR_ATAJO)
                         dibujar_esqueleto(frame, pts, color_mano)
                 else:
@@ -888,7 +1102,9 @@ def main(cfg: dict | None = None) -> None:
                         s.actualizar(DESCONOCIDO)
 
                 # --- Acciones mantenidas: on/off y clic derecho ------------- #
-                if accion_control.actualizar(accion_principal)[0]:
+                disparo_control, progreso = accion_control.actualizar(
+                    accion_principal)
+                if disparo_control:
                     control = not control
                     puntero.reiniciar()
                     atajos.reiniciar()
@@ -903,6 +1119,7 @@ def main(cfg: dict | None = None) -> None:
                 # --- Puntero, clics y atajos segun la accion ---------------- #
                 # Cualquier accion que no gestione la app es un atajo de Windows
                 es_atajo = accion_principal not in ACCIONES_APP
+                arrastrando = False
 
                 if not control or pts_principal is None:
                     puntero.reiniciar()
@@ -913,18 +1130,32 @@ def main(cfg: dict | None = None) -> None:
                 elif accion_principal in ACCIONES_PUNTERO:
                     atajos.reiniciar()
                     pulsando = accion_principal == CLIC_IZQ
-                    punta = pts_principal[INDICE_TIP]
+                    punta = punta_apuntado(pts_principal)
+
+                    # Mientras el voto mayoritario cambia de forma, los dedos ya
+                    # se estan estirando o plegando para el gesto siguiente, y
+                    # ese recorrido no es apuntar: es la mano cambiando de
+                    # postura. Congelando el puntero en cuanto la forma CRUDA
+                    # deja de coincidir, el clic cae donde estabas apuntando y
+                    # no unos pixeles mas alla, que es el fallo mas molesto al
+                    # pinchar cosas pequenas.
+                    transicion = accion_cruda != accion_principal
 
                     # Con el boton pulsado el cursor se congela (clic limpio)
                     # hasta que muevas lo suficiente: entonces pasa a arrastrar.
                     arrastrando = clics.actualizar_izquierdo(pulsando, punta, ancho)
-                    pos = puntero.actualizar(punta, ancho, alto,
-                                             mover=not pulsando or arrastrando)
+                    congelado_clic = pulsando and not arrastrando
+                    mover = not congelado_clic and not transicion
+                    puntero.actualizar(punta, ancho, alto, mover=mover,
+                                       escala=escala_mano(pts_principal),
+                                       descartar=congelado_clic)
 
                     color = COLOR_ACCION[accion_principal]
                     estela_camara.append(punta)
                     dibujar_estela(frame, estela_camara, color)
-                    dibujar_puntero(frame, punta, color)
+                    dibujar_puntero(frame, punta, color, avance=puntero.avance,
+                                    pulsando=pulsando, arrastrando=arrastrando,
+                                    congelado=not mover)
 
                 elif es_atajo:
                     # Al soltar el gesto de apuntar, el cursor se queda donde
@@ -932,8 +1163,11 @@ def main(cfg: dict | None = None) -> None:
                     puntero.reiniciar()
                     clics.soltar()
                     estela_camara.clear()
-                    if atajos.actualizar(accion_principal):
+                    lanzado = atajos.actualizar(accion_principal)
+                    if lanzado:
                         pitido(agudo=False)
+                        panel.marcar_atajo(lanzado)
+                    progreso = progreso or atajos.progreso()
                 else:
                     puntero.reiniciar()
                     atajos.reiniciar()
@@ -941,6 +1175,24 @@ def main(cfg: dict | None = None) -> None:
                     estela_camara.clear()
 
                 if MOSTRAR_VENTANA:
+                    # --- HUD ----------------------------------------------- #
+                    # Lo ultimo que se dibuja: va por encima del esqueleto y de
+                    # la mira, como los docks de OBS sobre la previsualizacion.
+                    # Sin ventana no se dibuja nada: seria trabajo para nadie.
+                    panel.medir(dt_frame,
+                                (time.perf_counter() - ahora) * 1000.0)
+                    panel.dibujar(
+                        frame, control=control, forma=forma_principal,
+                        accion=accion_principal,
+                        # Sin mano no hay senal que medir: la ventana del voto
+                        # se llena de "desconocido" y el medidor marcaria un
+                        # 100% de confianza en que no hay nada.
+                        confianza=(suavizadores[0].confianza
+                                   if pts_principal is not None else 0.0),
+                        velocidad=puntero.velocidad / VEL_ACEL_MAX,
+                        empuje=puntero.empuje, ganancia=GANANCIA_PUNTERO,
+                        arrastrando=arrastrando, progreso=progreso)
+
                     cv2.imshow(NOMBRE_VENTANA, frame)
                     # Salir: tecla q/ESC o el boton X de la ventana.
                     tecla = cv2.waitKey(1) & 0xFF
@@ -959,6 +1211,8 @@ def main(cfg: dict | None = None) -> None:
                     puntero.reiniciar()
                     atajos.reiniciar()
                     clics.soltar()
+                if tecla == ord("h"):          # esconder/mostrar el HUD
+                    panel.visible = not panel.visible
     finally:
         entrada.soltar_todo()     # botones y modificadores, nunca hundidos
         cap.release()

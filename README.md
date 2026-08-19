@@ -14,8 +14,8 @@ Doble clic en **`Gestos.vbs`** (o `iniciar.bat`) y se abre la ventana:
 ![launcher](launcher_oscuro.png)
 
 - **Editor de gestos** — cada forma de la mano, con su icono, tiene un
-  desplegable para elegir qué hace. Sirve además de chuleta: la ventana de
-  detección no muestra texto.
+  desplegable para elegir qué hace. La misma lista aparece en el HUD de la
+  ventana de detección, con el gesto que la cámara está viendo resaltado.
 - **Recuadro de atajo** en cada gesto — púlsalo y teclea la combinación, como
   los keybinds de Discord. Funciona con la tecla Windows.
 - **Puntero** — velocidad y aceleración con dos deslizadores.
@@ -42,10 +42,12 @@ ya está. Este es el mapa por defecto; **todo es editable** en la aplicación.
 | ✊ **puño** | **minimizar ventana** | `Win`+`↓` |
 | 🤙 **pulgar + meñique** | mantén **1,2 s**: activa/desactiva el control | — |
 
-En la ventana de detección **no aparece ningún texto**: solo el esqueleto de la
-mano y la diana del puntero. **Salir de la detección:** tecla `q`/`ESC` o el
-botón X. El pulgar da igual al apuntar y al hacer clic: `1 dedo` y la "L" hacen
-lo mismo.
+La ventana de detección lleva un **HUD con el aire de OBS Studio** encima de la
+imagen: estado del control, la lista de gestos con lo que hace cada uno, los
+medidores del puntero y una barra de estado con fps y CPU (ver
+[El HUD](#el-hud-estilo-obs-studio)). **Salir de la detección:** tecla `q`/`ESC`
+o el botón X; con `h` se esconde el HUD. El pulgar da igual al apuntar y al
+hacer clic: `1 dedo` y la "L" hacen lo mismo.
 
 ## Archivos
 
@@ -55,6 +57,7 @@ lo mismo.
 - [camara.py](camara.py) — detección de cámaras, menú de selección y compartir
 - [config.py](config.py) — `config.json`: gestos, atajos propios, tema, ajustes
 - [grabador.py](grabador.py) — captura la combinación de teclas que grabas
+- [hud.py](hud.py) — el HUD estilo OBS que se dibuja sobre la ventana de cámara
 - [idiomas.py](idiomas.py) — textos de la interfaz (español / inglés)
 - [sistema.py](sistema.py) — arranque con Windows y accesos directos
 - [instalador.py](instalador.py) — asistente de instalación
@@ -110,7 +113,7 @@ El botón **⚙ Ajustes** de la esquina superior derecha abre el panel:
 | Sección | Ajustes |
 |---|---|
 | **General** | Idioma (español / inglés) · Tema · **Iniciar con Windows** · Arrancar minimizado · Empezar a detectar al abrir · Preguntar antes de cerrar |
-| **Detección** | Ver la cámara en espejo · Dibujar la estela del dedo · Mostrar la ventana de la cámara · Resolución de captura |
+| **Detección** | Ver la cámara en espejo · Dibujar la estela del dedo · Mostrar la ventana de la cámara · **Panel de estado sobre la cámara** · Resolución de captura |
 | **Tiempos** | Cuánto mantener un gesto para lanzar su atajo · Cuánto para activar/desactivar |
 | **Avisos** | Sonido al hacer clic o lanzar un atajo |
 | **Ayuda** | Abrir el proyecto en GitHub · Ver la guía de gestos · Abrir la carpeta de configuración |
@@ -153,9 +156,9 @@ o los valores por defecto):
 ```
 
 Con el control activado (arranca en ON), levanta **un dedo** y mueve la mano: el
-**cursor de Windows** se desplaza. Sobre la imagen de la cámara verás la diana y
-una estela del dedo. La ventana de detección no muestra texto: si no recuerdas un
-gesto, mira la [chuleta](#chuleta-de-gestos-configuración-por-defecto).
+**cursor de Windows** se desplaza. Sobre la imagen de la cámara verás la mira del
+puntero, la estela del dedo y el HUD con los gestos y sus acciones, así que no
+hace falta recordarse la [chuleta](#chuleta-de-gestos-configuración-por-defecto).
 
 ## Elegir la cámara
 
@@ -284,6 +287,51 @@ dedo — justo al apuntar con cuidado. Por eso el desplazamiento se guarda en un
 residuo que se acumula hasta dar un paso. El ruido aleatorio se cancela solo al
 sumarse, así que esto no reintroduce temblor.
 
+Encima de eso hay cuatro cosas más que trabajan solo por la precisión:
+
+- **La velocidad de la curva se mide sobre la señal ya filtrada**, no sobre la
+  cruda. Con la mano quieta, el ruido del landmark marcaba "velocidad alta" y
+  metía la aceleración justo cuando quieres apuntar fino: el temblor entraba
+  multiplicado en vez de reducido.
+- **Y se mide por segundo, no por frame** (`VEL_ACEL_MAX`). Medida por frame, a
+  60 fps cada uno recogía la mitad de recorrido que a 30, la curva se quedaba en
+  la parte baja y el cursor iba pesado justo en los equipos rápidos.
+- **Compensación de distancia a la cámara.** El recorrido se mide en fracción del
+  encuadre, así que la misma mano movida lo mismo recorre la mitad si te alejas
+  al doble: sentado cerca el puntero volaba y echado hacia atrás se arrastraba.
+  Ahora se divide por el tamaño aparente de la mano (muñeca → nudillo del medio),
+  con un tope para que una mano medio salida del encuadre no dispare la ganancia.
+- **Se apunta con la punta del índice mezclada con su falange** (`MEZCLA_PUNTA`).
+  La punta es el landmark que más baila, porque está al final de la cadena y
+  arrastra el error de todas las articulaciones anteriores; la falange anterior
+  se desplaza con ella pero con bastante menos ruido.
+
+**El clic cae donde apuntabas.** El gesto se decide por voto mayoritario de los
+últimos frames, y mientras el voto cambia los dedos ya se están estirando para el
+gesto siguiente: ese recorrido no es apuntar, es la mano cambiando de postura, y
+se llevaba el cursor unos píxeles más allá justo al pinchar cosas pequeñas. Ahora
+el puntero se congela en cuanto la forma **cruda** deja de coincidir con la
+votada, y la mira lo enseña con cuatro esquinas para que no parezca un cuelgue.
+
+### La mira del puntero
+
+Sobre el punto con el que apuntas se dibuja una mira que, de un vistazo, dice las
+cuatro cosas que importan mientras no te estás mirando la mano:
+
+- el **centro**, un punto de 1-2 px, es el sitio exacto que se está midiendo (la
+  diana anterior era un círculo de 14 px y no se sabía si el puntero salía del
+  centro o del borde);
+- el **anillo segmentado** deja ver la imagen por los huecos, así que no tapa lo
+  que estás señalando, y **gira** mientras arrastras;
+- el **arco interior** es la ganancia que está aplicando la curva: casi cerrado
+  apuntas fino, completo vas a toda velocidad;
+- las **esquinas** aparecen cuando el puntero está retenido (clic o cambio de
+  gesto).
+
+Todo se dibuja dos veces, primero oscuro y más grueso, para que se lea igual
+sobre una pared blanca que sobre una sudadera negra, y **escala con la
+resolución**: en píxeles fijos salía enorme en 480p y como una pulga en 1080p.
+
 Ajusta la sensibilidad general con el **deslizador "Velocidad"** de la GUI
 (`GANANCIA_PUNTERO`): súbelo si el cursor se queda corto, bájalo si se escapa.
 "Aceleración" controla cuánto empuje extra dan los gestos rápidos.
@@ -308,6 +356,44 @@ Ajusta la sensibilidad general con el **deslizador "Velocidad"** de la GUI
   cerrarse. Si el cursor no se mueve pero la mano sí se detecta, mira la consola:
   ahí aparece el aviso. Suele arreglarse cerrando o desenfocando la ventana
   elevada.
+
+## El HUD (estilo OBS Studio)
+
+Antes la ventana de cámara no escribía nada: para saber si el control estaba
+activo, qué gesto había entendido o por qué el cursor iba lento había que mirar
+el launcher, la chuleta de este README o adivinarlo — justo cuando estás
+apuntando con la mano y no puedes apartar la vista.
+
+Ahora lleva encima un HUD que **copia el lenguaje visual de OBS Studio** a
+propósito, porque resuelve exactamente el mismo problema: enterarte del estado de
+un vistazo mientras miras otra cosa. Cada pieza viene de allí:
+
+| Pieza de OBS | Aquí |
+|---|---|
+| Punto de "en directo" | verde = control activo, gris = en pausa, rojo = arrastrando |
+| Lista de fuentes de la escena | las 7 formas de la mano con la acción de cada una, la que ve la cámara resaltada |
+| Medidores del mezclador de audio | **VEL** (velocidad del puntero, con marca de pico que cae sola) y **SEÑAL** (cuánto está de acuerdo el voto del gesto) |
+| Barra de estado inferior | reloj de sesión, `CPU: 3,1%, 29,97 fps`, resolución, ms de proceso y frames perdidos |
+| Docks planos con cabecera | los dos paneles, con relleno translúcido y borde de 1 px |
+
+Debajo de la fila del gesto activo hay una **barra de progreso** del gesto
+mantenido: se ve que la espera para lanzar el atajo (o para activar el control)
+está corriendo y no que no te está reconociendo. Cuando el atajo sale, su fila
+**destella** un momento — el pitido avisa de que algo se lanzó, pero no de qué.
+
+- Se quita y se pone con la tecla **`h`**, y se puede dejar apagado de fábrica en
+  **Ajustes → Detección → "Panel de estado sobre la cámara"**.
+- Los rellenos translúcidos se mezclan **solo en el recorte que ocupa cada
+  panel**: un `addWeighted` sobre el frame entero costaba más que la propia
+  detección.
+- Los textos salen de `idiomas.py` (español e inglés) y se **transliteran a
+  ASCII** al dibujarlos: la fuente Hershey de OpenCV no tiene acentos ni emojis y
+  los pinta como cuadros vacíos.
+- Sin ventana de cámara (`mostrar_ventana` desactivado) no se dibuja nada: sería
+  trabajo para nadie.
+- El HUD **no calcula nada por su cuenta**: todos los valores se los pasa el
+  bucle de detección ya hechos, así que no puede acabar contando una cosa
+  distinta de la que está pasando.
 
 ## Los clics
 
@@ -486,9 +572,9 @@ Con pruebas automáticas, sin cámara:
   corrupta, incompleta o con valores inválidos se repara a los defaults; y el
   editor de la GUI hace round-trip (lo que pones en los desplegables, los
   deslizadores y el tema es exactamente lo que se guarda).
-- Que **no queda ninguna indicación en pantalla**: ni una llamada a
-  `cv2.putText`, ni contador de FPS, y las funciones de panel, etiqueta y barra
-  de progreso están eliminadas (el dibujo del esqueleto y la diana se mantienen).
+- Que el **HUD no cambia el comportamiento**: se puede quitar con `h` o desde los
+  ajustes y la detección hace exactamente lo mismo, porque solo dibuja con los
+  valores que le pasa el bucle; sin ventana de cámara no se dibuja nada.
 - Air-mouse relativo: arranca anclado al cursor real, la mano lo empuja en la
   dirección correcta, el embrague no salta al recolocar, la zona muerta ignora el
   temblor y nunca se sale del escritorio virtual (incluido un segundo monitor con

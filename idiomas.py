@@ -27,8 +27,9 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aceleracion_pista": "empuje extra en gestos amplios",
         "compartir_camara": "Compartir con otras apps (Zoom, Teams…)",
         "preguntar_camara": "Preguntar que camara usar al arrancar",
-        "ayuda_deteccion": ("La ventana de camara no muestra texto.\n"
+        "ayuda_deteccion": ("La ventana de camara lleva un panel con el estado.\n"
                             "Salir de la deteccion:  tecla  Q  o cerrar la ventana.\n"
+                            "Tecla  H:  esconder o mostrar ese panel.\n"
                             "El gesto de on/off pausa el control sin cerrar nada."),
         "pista_gestos": ("Despliega para elegir raton o un atajo ya hecho.   "
                          "⌨ graba la combinacion\nde teclas que quieras "
@@ -65,6 +66,8 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aj_espejo": "Ver la camara en espejo",
         "aj_estela": "Dibujar la estela del dedo",
         "aj_ventana": "Mostrar la ventana de la camara",
+        "aj_hud": "Panel de estado sobre la camara",
+        "aj_hud_pista": "Gestos, medidores y fps; se quita con la tecla H",
         "aj_resolucion": "Resolucion de captura",
         "aj_tiempos": "Tiempos",
         "aj_espera_atajo": "Mantener para lanzar un atajo (s)",
@@ -153,6 +156,20 @@ TEXTOS: dict[str, dict[str, str]] = {
         "accion_pestana_nueva": "Pestana nueva",
         "accion_cerrar_pestana": "Cerrar pestana",
         "accion_recargar": "Recargar",
+        # --- HUD de la ventana de camara ---
+        # Se dibujan con la fuente Hershey de OpenCV, que no tiene acentos ni
+        # simbolos: se escriben ya en ASCII y en corto, porque van en tiras de
+        # 20 px y en columnas de 40 px que no dan para mas.
+        "hud_activo": "CONTROL ACTIVO",
+        "hud_pausa": "EN PAUSA",
+        "hud_arrastre": "ARRASTRANDO",
+        "hud_gestos": "GESTOS",
+        "hud_puntero": "PUNTERO",
+        "hud_vel": "VEL",
+        "hud_senal": "SENAL",
+        "hud_ganancia": "VELOCIDAD",
+        "hud_perdidos": "PERDIDOS",
+        "hud_teclas": "Q salir - C on/off - H panel",
     },
     "en": {
         "titulo": "Gestures · Camera control",
@@ -168,8 +185,9 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aceleracion_pista": "extra push on wide gestures",
         "compartir_camara": "Share with other apps (Zoom, Teams…)",
         "preguntar_camara": "Ask which camera to use on startup",
-        "ayuda_deteccion": ("The camera window shows no text.\n"
+        "ayuda_deteccion": ("The camera window has a status panel on it.\n"
                             "Quit detection:  press  Q  or close the window.\n"
+                            "Press  H:  hide or show that panel.\n"
                             "The on/off gesture pauses control without closing."),
         "pista_gestos": ("Open the list to pick a mouse action or a ready-made "
                          "shortcut.   ⌨ records any\nkey combination (the "
@@ -203,6 +221,8 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aj_espejo": "Mirror the camera view",
         "aj_estela": "Draw the finger trail",
         "aj_ventana": "Show the camera window",
+        "aj_hud": "Status panel over the camera",
+        "aj_hud_pista": "Gestures, meters and fps; press H to hide it",
         "aj_resolucion": "Capture resolution",
         "aj_tiempos": "Timings",
         "aj_espera_atajo": "Hold to fire a shortcut (s)",
@@ -290,6 +310,17 @@ TEXTOS: dict[str, dict[str, str]] = {
         "accion_pestana_nueva": "New tab",
         "accion_cerrar_pestana": "Close tab",
         "accion_recargar": "Reload",
+        # --- Camera window HUD (see the Spanish block) ---
+        "hud_activo": "CONTROL ON",
+        "hud_pausa": "PAUSED",
+        "hud_arrastre": "DRAGGING",
+        "hud_gestos": "GESTURES",
+        "hud_puntero": "POINTER",
+        "hud_vel": "SPD",
+        "hud_senal": "SIGNAL",
+        "hud_ganancia": "SPEED",
+        "hud_perdidos": "DROPPED",
+        "hud_teclas": "Q quit - C on/off - H panel",
     },
 }
 
