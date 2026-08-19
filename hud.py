@@ -51,7 +51,7 @@ BORDE = (66, 66, 66)
 SELECCION = (70, 62, 52)      # fila activa: el azul de OBS muy rebajado
 TEXTO = (222, 222, 222)
 TENUE = (152, 152, 152)
-APAGADO = (96, 96, 96)
+APAGADO = (132, 132, 132)
 ACENTO = (233, 174, 61)       # #3daee9
 VIVO = (90, 200, 90)          # control activo
 PAUSA = (110, 110, 110)
@@ -293,7 +293,7 @@ class HUD:
     def _dock(self, frame, x: int, y: int, w: int, h: int, titulo: str,
               e: float) -> int:
         """Panel con cabecera. Devuelve la Y donde empieza el contenido."""
-        rect_translucido(frame, x, y, w, h, PANEL, 0.82)
+        rect_translucido(frame, x, y, w, h, PANEL, 0.88)
         cab = int(round(self.ALTO_CABECERA * e))
         rect_translucido(frame, x, y, w, cab, CABECERA, 0.9)
         cv2.rectangle(frame, (x, y), (x + w - 1, y + h - 1), BORDE, 1)
@@ -325,8 +325,11 @@ class HUD:
             color = color_nivel((i + 0.5) / bloques)
             if i >= encendidos:           # aun no ha llegado: se deja apagado
                 color = apagar(color)
+            # -2 y no -1: `cv2.rectangle` incluye las dos esquinas, asi que con
+            # -1 cada bloque acababa pegado al siguiente y el medidor salia como
+            # una barra lisa, sin los segmentos que lo hacen legible de reojo.
             x0 = int(x + i * ancho_b)
-            x1 = max(x0, int(x + (i + 1) * ancho_b) - 1)
+            x1 = max(x0, int(x + (i + 1) * ancho_b) - 2)
             cv2.rectangle(frame, (x0, y + 1), (x1, y + h - 2), color, -1)
         if pico is not None and pico > 0.02:
             px = int(x + recortar(pico, 0.0, 1.0) * (w - 2))
@@ -463,10 +466,10 @@ class HUD:
 
         seg = int(time.perf_counter() - self._t0)
         reloj = f"{seg // 3600:02d}:{seg % 3600 // 60:02d}:{seg % 60:02d}"
+        # Sin punto de "grabando" delante del reloj: aqui no se graba nada, y
+        # un circulo rojo en la barra decia justo lo contrario. El estado del
+        # control ya lo lleva el punto de la tira de arriba, que es donde toca.
         x = int(10 * e)
-        cv2.circle(frame, (x + int(4 * e), y + h // 2), int(round(3.5 * e)),
-                   REC, -1, cv2.LINE_AA)
-        x += int(15 * e)
         for cadena, color in (
                 (reloj, TEXTO),
                 (f"CPU: {self._cpu:.1f}%, {self._fps:.2f} fps", TENUE),

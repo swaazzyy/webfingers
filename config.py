@@ -201,6 +201,7 @@ DEFECTO = {
         "estela": True,                     # dibujar el rastro del dedo
         "mostrar_ventana": True,            # ver la ventana de la camara
         "hud": True,                        # panel de estado sobre la camara
+        "vista_previa": True,               # ver la camara en la ventana principal
         "resolucion": "960x540",
         "espera_atajo": 0.35,               # s manteniendo para lanzar un atajo
         "espera_control": 1.2,              # s para activar/desactivar
@@ -267,7 +268,7 @@ def _validar(cfg: dict) -> dict:
         cfg["app"][clave] = bool(cfg["app"].get(clave, DEFECTO["app"][clave]))
 
     d = cfg["deteccion"]
-    for clave in ("espejo", "estela", "mostrar_ventana", "hud"):
+    for clave in ("espejo", "estela", "mostrar_ventana", "hud", "vista_previa"):
         d[clave] = bool(d.get(clave, DEFECTO["deteccion"][clave]))
     if d.get("resolucion") not in RESOLUCIONES:
         d["resolucion"] = DEFECTO["deteccion"]["resolucion"]

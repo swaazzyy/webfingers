@@ -13,6 +13,9 @@ Doble clic en **`Gestos.vbs`** (o `iniciar.bat`) y se abre la ventana:
 
 ![launcher](launcher_oscuro.png)
 
+- **Vista previa de la cámara** — como el preview de OBS, dentro de la propia
+  ventana: te encuadras y compruebas la luz antes de empezar, sin arrancar nada
+  (ver [La vista previa](#la-vista-previa-de-la-cámara)).
 - **Editor de gestos** — cada forma de la mano, con su icono, tiene un
   desplegable para elegir qué hace. La misma lista aparece en el HUD de la
   ventana de detección, con el gesto que la cámara está viendo resaltado.
@@ -58,6 +61,8 @@ hacer clic: `1 dedo` y la "L" hacen lo mismo.
 - [config.py](config.py) — `config.json`: gestos, atajos propios, tema, ajustes
 - [grabador.py](grabador.py) — captura la combinación de teclas que grabas
 - [hud.py](hud.py) — el HUD estilo OBS que se dibuja sobre la ventana de cámara
+- [vista.py](vista.py) — la vista previa de la cámara dentro de la ventana principal
+- [puente.py](puente.py) — pasa los frames de la detección a la vista previa
 - [idiomas.py](idiomas.py) — textos de la interfaz (español / inglés)
 - [sistema.py](sistema.py) — arranque con Windows y accesos directos
 - [instalador.py](instalador.py) — asistente de instalación
@@ -113,7 +118,7 @@ El botón **⚙ Ajustes** de la esquina superior derecha abre el panel:
 | Sección | Ajustes |
 |---|---|
 | **General** | Idioma (español / inglés) · Tema · **Iniciar con Windows** · Arrancar minimizado · Empezar a detectar al abrir · Preguntar antes de cerrar |
-| **Detección** | Ver la cámara en espejo · Dibujar la estela del dedo · Mostrar la ventana de la cámara · **Panel de estado sobre la cámara** · Resolución de captura |
+| **Detección** | Ver la cámara en espejo · Dibujar la estela del dedo · Mostrar la ventana de la cámara · **Ver la cámara en la ventana principal** · **Panel de estado sobre la cámara** · Resolución de captura |
 | **Tiempos** | Cuánto mantener un gesto para lanzar su atajo · Cuánto para activar/desactivar |
 | **Avisos** | Sonido al hacer clic o lanzar un atajo |
 | **Ayuda** | Abrir el proyecto en GitHub · Ver la guía de gestos · Abrir la carpeta de configuración |
@@ -291,11 +296,11 @@ Encima de eso hay cuatro cosas más que trabajan solo por la precisión:
 
 - **La velocidad de la curva se mide sobre la señal ya filtrada**, no sobre la
   cruda. Con la mano quieta, el ruido del landmark marcaba "velocidad alta" y
-  metía la aceleración justo cuando quieres apuntar fino: el temblor entraba
-  multiplicado en vez de reducido.
-- **Y se mide por segundo, no por frame** (`VEL_ACEL_MAX`). Medida por frame, a
-  60 fps cada uno recogía la mitad de recorrido que a 30, la curva se quedaba en
-  la parte baja y el cursor iba pesado justo en los equipos rápidos.
+  metía la aceleración justo cuando quieres apuntar fino.
+- **Y se mide por segundo, no por frame** (`VEL_ACEL_MAX`). A 120 fps cada frame
+  recoge una octava parte del recorrido que a 15, así que el mismo gesto marcaba
+  mucha menos velocidad, la curva se quedaba abajo y el cursor iba pesado justo
+  en los equipos rápidos.
 - **Compensación de distancia a la cámara.** El recorrido se mide en fracción del
   encuadre, así que la misma mano movida lo mismo recorre la mitad si te alejas
   al doble: sentado cerca el puntero volaba y echado hacia atrás se arrastraba.
@@ -305,6 +310,22 @@ Encima de eso hay cuatro cosas más que trabajan solo por la precisión:
   La punta es el landmark que más baila, porque está al final de la cadena y
   arrastra el error de todas las articulaciones anteriores; la falange anterior
   se desplaza con ella pero con bastante menos ruido.
+
+Las tres primeras se pueden medir sin cámara, inyectando el gesto y el `dt` a
+mano y comparando con la versión anterior del módulo. **El mismo gesto físico
+debería recorrer lo mismo siempre**, así que lo que se mide es la dispersión:
+
+| Con el mismo gesto físico… | Antes | Ahora |
+|---|---:|---:|
+| a 15 / 24 / 30 / 60 / 120 fps (763→431 px antes) | 1,77× | **1,34×** |
+| a 9 % / 13 % / 18 % de mano en el encuadre | 2,98× | **1,09×** |
+| deriva con la mano quieta, 3 s, σ 0,3 % (5 semillas) | 3,7 px | **2,6 px** |
+
+Dos cosas hay que vigilar al medir esto, porque las dos dan resultados que
+*parecen* buenos y no lo son: el cursor **se recorta contra el borde** del
+escritorio (si el gesto es largo se mide el recorte, no la ganancia), y
+`actualizar()` **se reancla al cursor real** en su primera llamada, así que
+colocar la posición inicial antes de esa llamada no sirve de nada.
 
 **El clic cae donde apuntabas.** El gesto se decide por voto mayoritario de los
 últimos frames, y mientras el voto cambia los dedos ya se están estirando para el
@@ -357,6 +378,73 @@ Ajusta la sensibilidad general con el **deslizador "Velocidad"** de la GUI
   ahí aparece el aviso. Suele arreglarse cerrando o desenfocando la ventana
   elevada.
 
+## La vista previa de la cámara
+
+La ventana principal lleva la cámara dentro, como el preview de OBS. Antes, para
+ver qué estaba captando había que arrancar la detección y mirar una ventana
+aparte: encuadrarte, comprobar la luz o saber si habías elegido la cámara buena
+eran cosas que no se podían hacer desde la app.
+
+El panel tiene **dos fuentes** y cambia solo según lo que esté pasando:
+
+| Estado | Qué se ve | Quién tiene la cámara |
+|---|---|---|
+| Detección parada | la cámara en directo | la ventana principal |
+| Detección en marcha | los frames ya dibujados: esqueleto, mira y HUD | el proceso de detección |
+
+El relevo entre las dos es la parte delicada: en Windows una webcam normal **no
+se puede abrir dos veces**, así que la vista previa suelta la cámara *y espera a
+que su hilo lector termine* antes de lanzar la detección. Si no lo hiciera, la
+detección arrancaría y moriría diciendo que no hay cámara.
+
+Los frames viajan entre los dos procesos por **memoria compartida**
+([puente.py](puente.py)), no por una tubería: copiar y serializar 3 MB por frame
+se comería el procesador que necesita MediaPipe. Solo se guarda el último frame
+(no hay cola: si la ventana va más lenta que la cámara se salta frames, que es
+mejor que acumular retraso), y un contador de versión par/impar evita leer un
+frame a medio escribir sin que ninguno de los dos procesos espere al otro.
+
+> **Abrir la cámara puede tardar.** Con la casilla **"Compartir con otras apps
+> (Zoom, Teams…)"** marcada se usa el backend MSMF de Windows, que en este
+> equipo tarda **19 s** en abrir; sin ella se usa DirectShow y tarda **4 s**. El
+> panel dice "Abriendo la cámara…" mientras tanto. Si no necesitas usar la
+> cámara a la vez que otro programa, desmarcarla hace la app mucho más ágil.
+
+La vista previa se puede apagar en **Ajustes → Detección → "Ver la cámara en la
+ventana principal"**.
+
+## Con la ventana minimizada el cursor no se frena
+
+Windows 11 **estrangula los procesos cuya ventana está minimizada**: los baja de
+frecuencia y los manda a los núcleos de eficiencia. Es "EcoQoS", y para casi
+cualquier programa está muy bien. Para este no: el cursor lo mueve el proceso de
+detección, así que al minimizar la ventana el puntero empezaba a ir a tirones
+aunque la mano se moviera igual de rápido.
+
+Se puede renunciar a ese ahorro proceso a proceso, y es lo que hace
+`sistema.mantener_ritmo()` al arrancar la detección:
+
+| Qué se pide a Windows | Para qué |
+|---|---|
+| `PROCESS_POWER_THROTTLING_EXECUTION_SPEED` = off | que no baje la frecuencia al minimizar |
+| `PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION` = off | que siga respetando el reloj fino en segundo plano |
+| `timeBeginPeriod(1)` | esperas de 1 ms de verdad (OpenCV no usa el temporizador nuevo de Python) |
+| `ABOVE_NORMAL_PRIORITY_CLASS` | llegar a tiempo cuando el equipo está ocupado — un escalón, no "alta", que dejaría sin CPU al resto |
+
+> Al llamar a estas APIs con `ctypes` hay una trampa: `GetCurrentProcess()`
+> devuelve un **pseudo-handle** (-1) y, si no se declara `restype = HANDLE`,
+> ctypes lo trunca a 32 bits y todo falla con `ERROR_INVALID_HANDLE` sin decir
+> por qué. Están declaradas en `sistema._kernel32()`.
+
+Además se deja de dibujar lo que nadie puede ver:
+
+- si la **ventana de detección** está minimizada y la vista previa no está
+  escuchando, no se dibujan ni el esqueleto, ni la mira, ni el HUD (se consulta
+  a Windows con `IsIconic`, dos veces por segundo, no en cada frame);
+- si la **ventana principal** está minimizada, la vista previa deja de convertir
+  imágenes, pero **no suelta la cámara**: reabrirla cuesta segundos y taparla
+  cuesta microsegundos.
+
 ## El HUD (estilo OBS Studio)
 
 Antes la ventana de cámara no escribía nada: para saber si el control estaba
@@ -370,10 +458,14 @@ un vistazo mientras miras otra cosa. Cada pieza viene de allí:
 
 | Pieza de OBS | Aquí |
 |---|---|
-| Punto de "en directo" | verde = control activo, gris = en pausa, rojo = arrastrando |
+| Punto de "en directo" (arriba, y solo ahí) | verde = control activo, gris = en pausa, rojo = arrastrando |
 | Lista de fuentes de la escena | las 7 formas de la mano con la acción de cada una, la que ve la cámara resaltada |
 | Medidores del mezclador de audio | **VEL** (velocidad del puntero, con marca de pico que cae sola) y **SEÑAL** (cuánto está de acuerdo el voto del gesto) |
 | Barra de estado inferior | reloj de sesión, `CPU: 3,1%, 29,97 fps`, resolución, ms de proceso y frames perdidos |
+
+La barra de estado **no lleva punto de grabación**: aquí no se graba nada, y un
+círculo rojo al lado del reloj decía justo lo contrario. El único indicador de
+estado es el punto de la tira de arriba, que es el que sí significa algo.
 | Docks planos con cabecera | los dos paneles, con relleno translúcido y borde de 1 px |
 
 Debajo de la fila del gesto activo hay una **barra de progreso** del gesto

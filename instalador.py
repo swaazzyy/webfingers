@@ -24,8 +24,13 @@ import sistema
 # asi la app funciona sin conexion desde el primer arranque.
 ARCHIVOS = [
     "launcher.py", "gestos_manos.py", "control_windows.py", "camara.py",
-    "config.py", "grabador.py", "hud.py", "idiomas.py", "sistema.py",
-    "requirements.txt", "README.md", "hand_landmarker.task", "Gestos.vbs",
+    "config.py", "grabador.py", "hud.py", "idiomas.py", "puente.py",
+    "sistema.py", "vista.py",
+    "requirements.txt", "README.md", "hand_landmarker.task",
+    # Lanzadores y preparacion del entorno en el equipo de destino. Los dos .bat
+    # van a proposito: el .venv NO se copia (es del equipo que lo creo), asi que
+    # el usuario tiene que poder rehacerlo donde instale.
+    "Gestos.vbs", "iniciar.bat", "preparar_entorno.bat",
 ]
 
 TEMA = {

@@ -66,6 +66,8 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aj_espejo": "Ver la camara en espejo",
         "aj_estela": "Dibujar la estela del dedo",
         "aj_ventana": "Mostrar la ventana de la camara",
+        "aj_vista": "Ver la camara en la ventana principal",
+        "aj_vista_pista": "Vista previa para encuadrarte antes de empezar",
         "aj_hud": "Panel de estado sobre la camara",
         "aj_hud_pista": "Gestos, medidores y fps; se quita con la tecla H",
         "aj_resolucion": "Resolucion de captura",
@@ -170,6 +172,11 @@ TEXTOS: dict[str, dict[str, str]] = {
         "hud_ganancia": "VELOCIDAD",
         "hud_perdidos": "PERDIDOS",
         "hud_teclas": "Q salir - C on/off - H panel",
+        # --- Vista previa de la ventana principal ---
+        "vista_titulo": "VISTA PREVIA",
+        "vista_parada": "Vista previa apagada",
+        "vista_esperando": "Abriendo la camara…",
+        "vista_sin_camara": "No se pudo abrir la camara",
     },
     "en": {
         "titulo": "Gestures · Camera control",
@@ -221,6 +228,8 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aj_espejo": "Mirror the camera view",
         "aj_estela": "Draw the finger trail",
         "aj_ventana": "Show the camera window",
+        "aj_vista": "Show the camera in the main window",
+        "aj_vista_pista": "Preview to frame yourself before you start",
         "aj_hud": "Status panel over the camera",
         "aj_hud_pista": "Gestures, meters and fps; press H to hide it",
         "aj_resolucion": "Capture resolution",
@@ -321,6 +330,11 @@ TEXTOS: dict[str, dict[str, str]] = {
         "hud_ganancia": "SPEED",
         "hud_perdidos": "DROPPED",
         "hud_teclas": "Q quit - C on/off - H panel",
+        # --- Main window preview ---
+        "vista_titulo": "PREVIEW",
+        "vista_parada": "Preview off",
+        "vista_esperando": "Opening the camera…",
+        "vista_sin_camara": "Could not open the camera",
     },
 }
 

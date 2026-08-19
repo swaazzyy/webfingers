@@ -2,9 +2,15 @@
 Launcher grafico del detector de gestos.
 
 Es la cara visible de la app: se abre como una ventana normal (sin consola),
-deja editar los gestos, la sensibilidad, la camara y el tema, y con un boton
-arranca la deteccion en un proceso aparte. Asi conviven bien la GUI (tkinter) y
-la deteccion (OpenCV), que en el mismo proceso se estorban.
+deja editar los gestos, la sensibilidad, la camara y el tema, enseña la vista
+previa de la camara y con un boton arranca la deteccion en un proceso aparte.
+Asi conviven bien la GUI (tkinter) y la deteccion (OpenCV), que en el mismo
+proceso se estorban.
+
+La vista previa (ver vista.py) funciona como el preview de OBS: con la deteccion
+parada abre la camara ella misma para que puedas encuadrarte, y con la deteccion
+en marcha enseña los frames que publica el otro proceso, ya con el esqueleto, la
+mira y el HUD dibujados.
 
 Ejecutar sin consola:
     pythonw launcher.py     (o doble clic en Gestos.vbs)
@@ -20,7 +26,9 @@ from pathlib import Path
 import config
 import grabador
 import idiomas
+import puente
 import sistema
+import vista
 
 
 def carpeta_base() -> Path:
@@ -30,6 +38,7 @@ def carpeta_base() -> Path:
 
 
 RUTA_CONFIG = carpeta_base() / config.RUTA_DEFECTO_NOMBRE
+RUTA_PREF_CAMARA = carpeta_base() / "config_camara.json"
 
 # --------------------------------------------------------------------------- #
 # Temas
@@ -84,6 +93,7 @@ class Launcher:
         self._cargando = False                 # True mientras se vuelca la config
         self._pintables: list[tuple] = []
         self._tarjetas: list[tk.Frame] = []
+        self._receptor = None                  # puente de frames con la deteccion
 
         raiz.title(self.t("titulo"))
         raiz.resizable(False, False)
@@ -92,6 +102,26 @@ class Launcher:
         self._refrescar_atajos()
         self._aplicar_tema()
         raiz.protocol("WM_DELETE_WINDOW", self._cerrar)
+        # Al minimizar se deja de pintar la vista previa: convertir 30 imagenes
+        # por segundo para una ventana que no se ve le quita tiempo a la
+        # deteccion, que es justo cuando el cursor se nota a tirones.
+        raiz.bind("<Unmap>", self._ventana_oculta)
+        raiz.bind("<Map>", self._ventana_visible)
+        # Windows frena los procesos minimizados; aqui tambien se pide que no.
+        sistema.mantener_ritmo()
+        # La camara se abre despues de pintar la ventana: si se abriera antes,
+        # la app tardaria un segundo largo en aparecer y pareceria colgada.
+        raiz.after(300, self._vista_en_reposo)
+
+    def _ventana_oculta(self, evento) -> None:
+        # El evento tambien salta por widgets internos: solo interesa el de la
+        # ventana entera.
+        if evento.widget is self.raiz:
+            self.vista.pausar()
+
+    def _ventana_visible(self, evento) -> None:
+        if evento.widget is self.raiz:
+            self.vista.reanudar()
 
     # -- helpers de construccion ------------------------------------------- #
 
@@ -115,6 +145,7 @@ class Launcher:
         self.raiz.title(self.t("titulo"))
         self._modo_iniciar() if not self._deteccion_viva() else None
         self._refrescar_atajos()
+        self.vista.retraducir(self.t)
 
     def _tarjeta(self, padre, clave: str) -> tk.Frame:
         """Bloque con titulo y un marco suave, para agrupar ajustes."""
@@ -232,6 +263,12 @@ class Launcher:
 
         # ---- Camara (derecha) -------------------------------------------- #
         panel_c = self._tarjeta(der, "sec_camara")
+
+        # La vista previa va dentro de la tarjeta de camara, encima de sus
+        # casillas: es lo primero que se mira al elegir camara o al encuadrarse.
+        self.vista = vista.VistaPrevia(panel_c, self.t)
+        self.vista.marco.grid(row=0, column=0, columnspan=2, sticky="w",
+                              pady=(0, 8))
         self.var_compartir = tk.BooleanVar()
         self.var_menu = tk.BooleanVar()
         self.checks = []
@@ -241,7 +278,7 @@ class Launcher:
             chk = tk.Checkbutton(panel_c, text=self.t(clave), variable=var,
                                  anchor="w", font=("Segoe UI", 9), bd=0,
                                  highlightthickness=0, cursor="hand2")
-            chk.grid(row=fila, column=0, sticky="w", pady=2)
+            chk.grid(row=fila + 1, column=0, sticky="w", pady=2)
             self._reg(chk, "tarjeta", "texto", clave=clave, check=True)
             self.checks.append(chk)
 
@@ -487,6 +524,10 @@ class Launcher:
                            activeforeground=t["primario_txt"], bd=0)
         self.btn_tema.configure(
             text=self.t("tema_claro") if self.tema == "oscuro" else self.t("tema_oscuro"))
+        # La vista previa se queda oscura en los dos temas: es una imagen, y un
+        # marco blanco alrededor falsea los colores de lo que estas mirando (por
+        # eso el preview de OBS es negro pase lo que pase).
+        self.vista.aplicar_tema(t)
         self._pintar_estado()
 
     def _alternar_tema(self) -> None:
@@ -556,18 +597,49 @@ class Launcher:
         if self._deteccion_viva():
             self.proceso.terminate()
             self.proceso = None
+            self._soltar_vista()
             self._modo_iniciar()
+            self._vista_en_reposo()          # vuelve la camara a la vista previa
             self.estado.configure(text=self.t("estado_detenido"))
             return
 
         self._guardar()          # la deteccion lee config.json al arrancar
-        script = carpeta_base() / "gestos_manos.py"
-        self.proceso = subprocess.Popen([self._interprete(), str(script)],
-                                        cwd=str(carpeta_base()))
+
+        # La camara la va a abrir el otro proceso, asi que hay que SOLTARLA
+        # antes de lanzarlo: en Windows una webcam normal no se abre dos veces,
+        # y si la vista previa la sigue teniendo, la deteccion arranca y muere
+        # diciendo que no hay camara.
+        self.vista.parar_camara()
+
+        orden = [self._interprete(), str(carpeta_base() / "gestos_manos.py")]
+        try:
+            self._receptor = puente.Receptor()
+            orden += ["--vista", self._receptor.nombre]
+        except (OSError, ValueError):
+            self._receptor = None            # sin vista previa, pero detecta
+
+        self.proceso = subprocess.Popen(orden, cwd=str(carpeta_base()))
+        if self._receptor is not None:
+            self.vista.escuchar(self._receptor)
+            self.vista.marcar(True)
         self.btn_iniciar.configure(text=self.t("detener"))
         self.estado.configure(text=self.t("estado_marcha"))
         self._pintar_estado()
         self.raiz.after(1500, self._vigilar)
+
+    def _soltar_vista(self) -> None:
+        """Corta el puente con la deteccion y libera la memoria compartida."""
+        self.vista.dejar_de_escuchar()
+        self.vista.marcar(False)
+        if self._receptor is not None:
+            self._receptor.cerrar()
+            self._receptor = None
+
+    def _vista_en_reposo(self) -> None:
+        """Vuelve a enseñar la camara en directo, si la vista previa esta activa."""
+        self.vista.parar()
+        if self.cfg["deteccion"].get("vista_previa", True):
+            self.vista.arrancar_camara(self.cfg, RUTA_PREF_CAMARA)
 
     def _modo_iniciar(self) -> None:
         self.btn_iniciar.configure(text=self.t("iniciar"))
@@ -579,7 +651,9 @@ class Launcher:
             self.raiz.after(1500, self._vigilar)
         elif self.proceso is not None:
             self.proceso = None
+            self._soltar_vista()
             self._modo_iniciar()
+            self._vista_en_reposo()      # la camara vuelve a estar libre
             self.estado.configure(text=self.t("estado_cerrado"))
 
     # -- ventana de ajustes ------------------------------------------------- #
@@ -606,7 +680,8 @@ class Launcher:
         for clave in ("autoarranque", "arrancar_minimizado", "detectar_al_abrir",
                       "confirmar_salida", "sonido"):
             v[clave] = tk.BooleanVar(value=self.cfg["app"][clave])
-        for clave in ("espejo", "estela", "mostrar_ventana", "hud"):
+        for clave in ("espejo", "estela", "mostrar_ventana", "hud",
+                      "vista_previa"):
             v[clave] = tk.BooleanVar(value=self.cfg["deteccion"][clave])
         for clave in ("espera_atajo", "espera_control"):
             v[clave] = tk.DoubleVar(value=self.cfg["deteccion"][clave])
@@ -671,6 +746,7 @@ class Launcher:
         casilla(g2, T("aj_espejo"), v["espejo"])
         casilla(g2, T("aj_estela"), v["estela"])
         casilla(g2, T("aj_ventana"), v["mostrar_ventana"])
+        casilla(g2, T("aj_vista"), v["vista_previa"], T("aj_vista_pista"))
         casilla(g2, T("aj_hud"), v["hud"], T("aj_hud_pista"))
         desplegable(g2, T("aj_resolucion"), v["resolucion"], config.RESOLUCIONES)
 
@@ -710,7 +786,8 @@ class Launcher:
             for clave in ("arrancar_minimizado", "detectar_al_abrir",
                           "confirmar_salida", "sonido"):
                 self.cfg["app"][clave] = bool(v[clave].get())
-            for clave in ("espejo", "estela", "mostrar_ventana", "hud"):
+            for clave in ("espejo", "estela", "mostrar_ventana", "hud",
+                          "vista_previa"):
                 self.cfg["deteccion"][clave] = bool(v[clave].get())
             self.cfg["deteccion"]["resolucion"] = v["resolucion"].get()
             for clave in ("espera_atajo", "espera_control"):
@@ -729,6 +806,11 @@ class Launcher:
             dlg.destroy()
             self._retraducir()
             self._aplicar_tema()
+            # Reabrir la vista previa: aqui se pueden haber cambiado el espejo,
+            # la resolucion o la propia casilla de la vista, y todo eso hay que
+            # aplicarlo a la camara que ya estaba abierta.
+            if not self._deteccion_viva():
+                self._vista_en_reposo()
             self.estado.configure(text=self.t("estado_guardado"))
 
         tk.Button(pie, text=T("aceptar"), command=aplicar, bd=0, width=12,
@@ -754,6 +836,8 @@ class Launcher:
         self._parar_grabacion()   # nunca dejar el hook de teclado instalado
         if self._deteccion_viva():
             self.proceso.terminate()
+        self.vista.parar()        # suelta la camara y para el hilo lector
+        self._soltar_vista()
         self.raiz.destroy()
 
 

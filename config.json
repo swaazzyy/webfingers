@@ -12,6 +12,8 @@
     "espejo": true,
     "estela": true,
     "mostrar_ventana": true,
+    "hud": true,
+    "vista_previa": true,
     "resolucion": "960x540",
     "espera_atajo": 0.35,
     "espera_control": 1.2
@@ -20,7 +22,7 @@
     "un_dedo": "mover",
     "dos_dedos": "clic_izq",
     "tres_dedos": "cambiar_app",
-    "pulgar": "nada",
+    "pulgar": "cerrar_app",
     "mano_abierta": "maximizar",
     "puno": "minimizar",
     "pulgar_menique": "alternar"

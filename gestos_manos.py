@@ -73,6 +73,8 @@ import camara
 import config
 import hud
 import idiomas
+import puente
+import sistema
 from control_windows import EntradaWindows
 
 # --------------------------------------------------------------------------- #
@@ -131,11 +133,13 @@ GANANCIA_PUNTERO = 2.0     # sensibilidad general (la ajusta el slider de la GUI
 ACELERACION = 1.4          # empuje extra en gestos rapidos (0 = velocidad constante)
 
 # Velocidad del dedo a la que la aceleracion topa, en anchos de encuadre POR
-# SEGUNDO. En segundos y no "por frame" a proposito: el mismo gesto fisico da
-# la misma aceleracion a 15 que a 60 fps. Medido por frame, a 60 fps cada uno
-# recogia la mitad de recorrido que a 30, la curva se quedaba en la parte baja
-# y el cursor iba pesado justo en los equipos rapidos, que es donde menos se
-# espera. (1,5 = cruzar el encuadre y medio en un segundo.)
+# SEGUNDO. En segundos y no "por frame" a proposito: a 120 fps cada frame recoge
+# una octava parte del recorrido que a 15, asi que el mismo gesto marcaba mucha
+# menos velocidad, la curva se quedaba abajo y el cursor iba pesado justo en los
+# equipos rapidos. Medido con el mismo gesto lento a 15/24/30/60/120 fps, el
+# recorrido caia de 763 a 431 px (1,77x de diferencia); ahora se queda en 1,34x.
+# (1,5 = cruzar encuadre y medio en un segundo; a 30 fps equivale al 0,05 por
+# frame de antes, asi que el tacto de siempre no cambia.)
 VEL_ACEL_MAX = 1.5
 
 # PRECISION: a baja velocidad el cursor avanza solo esta fraccion de la ganancia,
@@ -1013,10 +1017,34 @@ def pitido(agudo: bool = True) -> None:
         pass                                # sin sonido no pasa nada grave
 
 
-def main(cfg: dict | None = None) -> None:
+def main(cfg: dict | None = None, vista: str | None = None) -> None:
+    """Bucle de deteccion.
+
+    `vista` es el nombre del bloque de memoria compartida donde publicar los
+    frames ya dibujados, para que la ventana principal los enseñe en su vista
+    previa (lo pasa el launcher con --vista). Sin el, la deteccion funciona
+    igual que siempre y solo se ve en su propia ventana de OpenCV.
+    """
     if cfg is None:
         cfg = config.cargar(carpeta_base() / config.RUTA_DEFECTO_NOMBRE)
     mapa = aplicar_config(cfg)     # forma de la mano -> accion elegida
+
+    # Este proceso mueve el cursor: si Windows lo frena al minimizar la ventana
+    # (lo hace por defecto, ver sistema.mantener_ritmo), la mano sigue igual de
+    # rapida pero el puntero empieza a ir a tirones. Se pide no ser frenado.
+    ritmo = sistema.mantener_ritmo(prioridad=True)
+    if not ritmo["estrangulamiento"]:
+        print("Aviso: Windows no dejo desactivar el ahorro de energia de este "
+              "proceso; con la ventana minimizada el cursor puede ir a tirones.")
+
+    emisor = None
+    if vista:
+        try:
+            emisor = puente.Emisor(vista)
+        except (FileNotFoundError, OSError) as err:
+            # La vista previa es un extra: si el bloque ya no esta (la ventana
+            # se cerro), se detecta igual en vez de no arrancar.
+            print(f"Sin vista previa en la ventana principal: {err}")
 
     cap = abrir_camara()          # lanza SystemExit con ayuda si no hay ninguna
 
@@ -1037,6 +1065,8 @@ def main(cfg: dict | None = None) -> None:
     # poder encenderlo con la tecla h aunque arranque apagado en los ajustes.
     panel = hud.HUD(idiomas.Textos(cfg["idioma"]), mapa, cfg)
     panel.visible = MOSTRAR_HUD
+    oculta = False                 # ventana minimizada: nadie mira el dibujo
+    fotogramas = 0
 
     try:
         with crear_detector() as detector:
@@ -1174,11 +1204,21 @@ def main(cfg: dict | None = None) -> None:
                     clics.soltar()
                     estela_camara.clear()
 
-                if MOSTRAR_VENTANA:
+                # Con la ventana minimizada y sin vista previa escuchando, no
+                # hay nadie mirando: dibujar el esqueleto, la mira y el HUD para
+                # nadie roba tiempo al cursor, que es lo unico que importa en
+                # ese momento. Se comprueba una vez cada medio segundo porque
+                # preguntarselo a Windows en cada frame tampoco es gratis.
+                if fotogramas % 15 == 0 and MOSTRAR_VENTANA and emisor is None:
+                    oculta = sistema.ventana_minimizada(NOMBRE_VENTANA)
+                fotogramas += 1
+
+                # Se dibuja si alguien lo va a mirar: la ventana propia de
+                # OpenCV, la vista previa de la ventana principal, o las dos.
+                if (MOSTRAR_VENTANA and not oculta) or emisor is not None:
                     # --- HUD ----------------------------------------------- #
                     # Lo ultimo que se dibuja: va por encima del esqueleto y de
                     # la mira, como los docks de OBS sobre la previsualizacion.
-                    # Sin ventana no se dibuja nada: seria trabajo para nadie.
                     panel.medir(dt_frame,
                                 (time.perf_counter() - ahora) * 1000.0)
                     panel.dibujar(
@@ -1193,6 +1233,13 @@ def main(cfg: dict | None = None) -> None:
                         empuje=puntero.empuje, ganancia=GANANCIA_PUNTERO,
                         arrastrando=arrastrando, progreso=progreso)
 
+                    if emisor is not None:
+                        emisor.enviar(frame)
+
+                if MOSTRAR_VENTANA:
+                    # Minimizada se sigue llamando a imshow (es lo que mantiene
+                    # viva la ventana y el teclado), pero con el frame sin
+                    # dibujar encima, que es lo caro.
                     cv2.imshow(NOMBRE_VENTANA, frame)
                     # Salir: tecla q/ESC o el boton X de la ventana.
                     tecla = cv2.waitKey(1) & 0xFF
@@ -1217,6 +1264,8 @@ def main(cfg: dict | None = None) -> None:
         entrada.soltar_todo()     # botones y modificadores, nunca hundidos
         cap.release()
         cv2.destroyAllWindows()
+        if emisor is not None:
+            emisor.cerrar()
 
 
 def autocomprobacion() -> int:
@@ -1242,4 +1291,10 @@ def autocomprobacion() -> int:
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         raise SystemExit(autocomprobacion())
-    main()
+    # --vista <nombre>: publicar los frames para la vista previa del launcher.
+    nombre_vista = None
+    if "--vista" in sys.argv:
+        i = sys.argv.index("--vista")
+        if i + 1 < len(sys.argv):
+            nombre_vista = sys.argv[i + 1]
+    main(vista=nombre_vista)
