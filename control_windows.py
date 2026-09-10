@@ -236,7 +236,7 @@ class EntradaWindows:
             return
         self._evento_raton(flags)
 
-    def clic(self, derecho: bool = False) -> None:
+    def clic(self, derecho: bool) -> None:
         """Clic completo (pulsar y soltar) en el sitio donde este el cursor."""
         self.boton(derecho, True)
         self.boton(derecho, False)

@@ -7,11 +7,13 @@ nunca llegan a la aplicacion. Con un hook WH_KEYBOARD_LL las vemos ANTES que el
 sistema, y ademas podemos tragarnoslas mientras se graba, para que grabar
 "Win + flecha arriba" no maximice la ventana en la que estas grabando.
 
-Uso:
-    g = GrabadorAtajos(al_terminar=lambda teclas: ...)
-    g.iniciar()      # empieza a escuchar
-    ...              # el usuario pulsa la combinacion
-    g.detener()      # se llama solo al capturar; tambien se puede forzar
+Uso (se consulta desde el bucle de la GUI, nunca desde el hook):
+    g = GrabadorAtajos()
+    g.iniciar()                  # empieza a escuchar
+    ...                          # cada pocos ms, desde la ventana:
+    if g.cancelado: ...          # el usuario pulso Escape
+    teclas = g.capturado         # None hasta que hay combinacion
+    g.detener()                  # cuando se termina o se cancela
 """
 
 from __future__ import annotations
@@ -87,9 +89,7 @@ class GrabadorAtajos:
     puede tumbar el proceso con un fallo que Python ni siquiera puede capturar.
     """
 
-    def __init__(self, al_terminar=None, al_cancelar=None) -> None:
-        self.al_terminar = al_terminar     # compatibilidad: lo invoca recoger()
-        self.al_cancelar = al_cancelar
+    def __init__(self) -> None:
         self._hook = None
         self._pulsados: set[str] = set()
         self.capturado: tuple[str, ...] | None = None
@@ -99,9 +99,6 @@ class GrabadorAtajos:
         self._callback = PROC_HOOK(self._procesar)
 
     # -- ciclo de vida ------------------------------------------------------ #
-
-    def activo(self) -> bool:
-        return self._hook is not None
 
     def iniciar(self) -> bool:
         if self._hook is not None:
@@ -126,32 +123,6 @@ class GrabadorAtajos:
             _user32.UnhookWindowsHookEx(self._hook)
             self._hook = None
         self._pulsados.clear()
-
-    def cancelar(self) -> None:
-        self.detener()
-        if self.al_cancelar:
-            self.al_cancelar()
-
-    def recoger(self) -> tuple[str, ...] | None:
-        """Se llama desde el bucle de la GUI, FUERA del hook.
-
-        Devuelve la combinacion capturada (y desinstala el hook) o None si aun
-        no hay nada. Si el usuario cancelo, desinstala y avisa.
-        """
-        if self.cancelado:
-            self.cancelado = False
-            self.detener()
-            if self.al_cancelar:
-                self.al_cancelar()
-            return None
-        teclas = self.capturado
-        if teclas is None:
-            return None
-        self.capturado = None
-        self.detener()                      # seguro: ya no estamos en el hook
-        if self.al_terminar:
-            self.al_terminar(teclas)
-        return teclas
 
     # -- hook --------------------------------------------------------------- #
 

@@ -210,8 +210,7 @@ def menu_inicio() -> Path:
             "Start Menu" / "Programs")
 
 
-def crear_acceso(destino: Path, objetivo: str, argumentos: str = "",
-                 icono: str = "", carpeta_trabajo: str = "") -> bool:
+def crear_acceso(destino: Path, objetivo: str, carpeta_trabajo: str) -> bool:
     """Crea un .lnk con WScript.Shell, sin dependencias externas.
 
     Se usa un pequeno script VBS porque el objeto COM esta siempre disponible
@@ -220,9 +219,7 @@ def crear_acceso(destino: Path, objetivo: str, argumentos: str = "",
     vbs = f'''Set s = CreateObject("WScript.Shell")
 Set a = s.CreateShortcut("{destino}")
 a.TargetPath = "{objetivo}"
-a.Arguments = "{argumentos}"
 a.WorkingDirectory = "{carpeta_trabajo}"
-{f'a.IconLocation = "{icono}"' if icono else ""}
 a.Save
 '''
     tmp = Path(os.environ.get("TEMP", ".")) / "_acceso_gestos.vbs"

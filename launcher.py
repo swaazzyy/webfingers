@@ -476,7 +476,7 @@ class Launcher:
     def _quitar_atajo(self, fid: str) -> None:
         """Deja el gesto sin accion."""
         self.cfg["gestos"][fid] = "nada"
-        self.gestos_var[fid].set(config.etiqueta_accion("nada", self.t))
+        self.gestos_var[fid].set(config.etiqueta_accion("nada", self.t, self.cfg))
         config.guardar(RUTA_CONFIG, self.cfg)
         self._refrescar_atajos()
         self.estado.configure(text=self.t("estado_sin_asignar", gesto=config.etiqueta_forma(fid, self.t)))
@@ -503,7 +503,7 @@ class Launcher:
         self._cargando = True
         for fid in self.gestos_var:
             accion = self.cfg["gestos"].get(fid, "nada")
-            self.gestos_var[fid].set(etiquetas.get(accion, config.etiqueta_accion("nada", self.t)))
+            self.gestos_var[fid].set(etiquetas.get(accion, config.etiqueta_accion("nada", self.t, self.cfg)))
             self._pintar_grabacion(fid, False)
         self._cargando = False
 

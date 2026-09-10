@@ -214,10 +214,9 @@ class HUD:
     ANCHO_GESTOS = 212
     ANCHO_PUNTERO = 232
 
-    def __init__(self, t, mapa: dict | None = None,
-                 cfg: dict | None = None) -> None:
+    def __init__(self, t, mapa: dict, cfg: dict) -> None:
         self.t = t                        # traductor de idiomas.py
-        self.mapa = dict(mapa or {})      # forma de la mano -> accion
+        self.mapa = dict(mapa)            # forma de la mano -> accion
         self.cfg = cfg
         self.visible = True
 
@@ -365,11 +364,6 @@ class HUD:
                   ancho - ancho_texto(etiqueta, 0.42 * e) - int(14 * e),
                   cy + int(4 * e), 0.42 * e, ACENTO)
 
-    def _alto_gestos(self, e: float) -> int:
-        fila = int(round(19 * e))
-        return (int(round(self.ALTO_CABECERA * e)) + fila * len(config.FORMAS)
-                + int(6 * e))
-
     def _dock_gestos(self, frame, x: int, y: int, e: float, forma: str,
                      progreso: float) -> None:
         """Lista de formas de la mano, al estilo de las fuentes de una escena.
@@ -380,7 +374,9 @@ class HUD:
         """
         w = int(round(self.ANCHO_GESTOS * e))
         fila = int(round(19 * e))
-        cy = self._dock(frame, x, y, w, self._alto_gestos(e),
+        alto = (int(round(self.ALTO_CABECERA * e)) + fila * len(config.FORMAS)
+                + int(6 * e))
+        cy = self._dock(frame, x, y, w, alto,
                         self._txt("hud_gestos"), e) + int(3 * e)
 
         col = int(w * 0.44)               # columna forma | columna accion

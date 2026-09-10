@@ -128,40 +128,41 @@ def id_propio(teclas) -> str:
     return PREFIJO_PROPIO + "+".join(teclas)
 
 
-def etiqueta_forma(fid: str, t=None) -> str:
+# `t` (el traductor) y `cfg` son obligatorios: no hay ni una llamada en la app
+# que los omita. Cuando tenian valor por defecto, cada funcion arrastraba una
+# rama "sin traductor" que devolvia el identificador crudo y que nadie ejecutaba
+# jamas; lo unico que hacia era esconder un error si algun dia se llamaba mal.
+def etiqueta_forma(fid: str, t) -> str:
     """Nombre visible de una forma de la mano, en el idioma activo."""
-    return t(f"forma_{fid}") if t else fid
+    return t(f"forma_{fid}")
 
 
-def etiqueta_accion(aid: str, t=None, cfg: dict | None = None) -> str:
+def etiqueta_accion(aid: str, t, cfg: dict) -> str:
     """Nombre visible de una accion: emoji + texto traducido.
 
     Los atajos que graba el usuario llevan el nombre que el mismo les puso (la
     propia combinacion de teclas), asi que no se traducen.
     """
-    propio = (cfg or {}).get("atajos_propios", {}).get(aid)
+    propio = cfg.get("atajos_propios", {}).get(aid)
     if propio:
         return propio["nombre"]
-    if t is None:
-        return aid
-    emoji = EMOJI_ACCION.get(aid, "")
-    return f"{emoji} {t(f'accion_{aid}')}".strip()
+    return f"{EMOJI_ACCION.get(aid, '')} {t(f'accion_{aid}')}".strip()
 
 
-def acciones(cfg: dict | None = None, t=None) -> list[tuple[str, str]]:
+def acciones(cfg: dict, t) -> list[tuple[str, str]]:
     """Acciones disponibles: las de raton, el catalogo y los atajos del usuario."""
     lista = [(aid, etiqueta_accion(aid, t, cfg)) for aid in IDS_ACCIONES]
-    for aid, datos in (cfg or {}).get("atajos_propios", {}).items():
+    for aid, datos in cfg.get("atajos_propios", {}).items():
         lista.append((aid, datos["nombre"]))
     return lista
 
 
-def grupos(cfg: dict | None = None, t=None) -> list[tuple[str, list[str]]]:
+def grupos(cfg: dict, t) -> list[tuple[str, list[str]]]:
     """Como `GRUPOS` pero con los titulos traducidos y los atajos propios."""
-    lista = [(t(clave) if t else clave, ids) for clave, ids in GRUPOS]
-    propios = list((cfg or {}).get("atajos_propios", {}))
+    lista = [(t(clave), ids) for clave, ids in GRUPOS]
+    propios = list(cfg.get("atajos_propios", {}))
     if propios:
-        lista.append((t("grupo_propios") if t else "grupo_propios", propios))
+        lista.append((t("grupo_propios"), propios))
     return lista
 
 

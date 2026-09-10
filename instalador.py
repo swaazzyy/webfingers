@@ -212,8 +212,8 @@ class Instalador:
 # Instalacion (sin interfaz, para poder probarla)
 # --------------------------------------------------------------------------- #
 
-def instalar(destino: Path, idioma: str = "es", acceso_escritorio: bool = True,
-             menu_inicio: bool = True, autoarranque: bool = False) -> Path:
+def instalar(destino: Path, idioma: str, acceso_escritorio: bool,
+             menu_inicio: bool, autoarranque: bool) -> Path:
     """Copia la aplicacion y deja los accesos creados. Devuelve la carpeta."""
     destino = Path(destino)
     destino.mkdir(parents=True, exist_ok=True)
