@@ -36,7 +36,7 @@ acción que quieras, incluida cualquier combinación de teclas que grabes.
 
 ---
 
-## El HUD, al estilo de OBS Studio
+## El HUD
 
 ![El HUD sobre la imagen de la cámara](hud.png)
 
