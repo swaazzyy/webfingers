@@ -33,8 +33,7 @@
   },
   "camara": {
     "indice": null,
-    "compartir": false,
-    "menu_siempre": false
+    "compartir": false
   },
   "atajos_propios": {
     "propio:win+abajo": {

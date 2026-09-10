@@ -13,7 +13,3 @@ numpy>=1.21
 # por su cuenta (mediapipe -> matplotlib -> PIL); depender de eso para dibujar la
 # ventana era pedir que un cambio en mediapipe dejara la app sin interfaz.
 
-# Opcional: nombres reales de las camaras en el menu de seleccion.
-# Sin esto se muestran como "Camara 0", "Camara 1"... (todo lo demas funciona).
-# pygrabber>=0.2
-

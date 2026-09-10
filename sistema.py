@@ -12,9 +12,19 @@ import ctypes
 import os
 import subprocess
 import sys
-import winreg
-from ctypes import wintypes
 from pathlib import Path
+
+WINDOWS = sys.platform == "win32"
+
+# `winreg` y `ctypes.wintypes` solo existen en Windows (wintypes revienta al
+# importarlo en Linux). Se importan condicionados para que el resto del programa
+# —camara, HUD, vista previa, ventana— se pueda importar fuera de Windows sin
+# morir en la primera linea.
+if WINDOWS:
+    import winreg
+    from ctypes import wintypes
+else:
+    winreg = None
 
 CLAVE_RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NOMBRE_APP = "ControlPorGestos"
@@ -39,27 +49,27 @@ _IGNORE_TIMER_RESOLUTION = 0x4
 _ABOVE_NORMAL_PRIORITY_CLASS = 0x00008000
 
 
-class _Throttling(ctypes.Structure):
-    _fields_ = [("Version", wintypes.ULONG),
-                ("ControlMask", wintypes.ULONG),
-                ("StateMask", wintypes.ULONG)]
-
-
 # Tipos declarados UNA vez, al importar. Declarar el retorno de
 # `GetCurrentProcess` no es opcional: devuelve un pseudo-handle (-1) y, sin
 # decirlo, ctypes lo trunca a 32 bits y todas las llamadas fallan con
 # ERROR_INVALID_HANDLE sin que se note por que.
-_k32 = ctypes.windll.kernel32
-_k32.GetCurrentProcess.restype = wintypes.HANDLE
-_k32.SetProcessInformation.argtypes = [wintypes.HANDLE, ctypes.c_int,
-                                       ctypes.c_void_p, wintypes.DWORD]
-_k32.SetProcessInformation.restype = wintypes.BOOL
-_k32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-_k32.SetPriorityClass.restype = wintypes.BOOL
+if WINDOWS:
+    class _Throttling(ctypes.Structure):
+        _fields_ = [("Version", wintypes.ULONG),
+                    ("ControlMask", wintypes.ULONG),
+                    ("StateMask", wintypes.ULONG)]
 
-_u32 = ctypes.windll.user32
-_u32.FindWindowW.restype = wintypes.HWND
-_u32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    _k32 = ctypes.windll.kernel32
+    _k32.GetCurrentProcess.restype = wintypes.HANDLE
+    _k32.SetProcessInformation.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                           ctypes.c_void_p, wintypes.DWORD]
+    _k32.SetProcessInformation.restype = wintypes.BOOL
+    _k32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    _k32.SetPriorityClass.restype = wintypes.BOOL
+
+    _u32 = ctypes.windll.user32
+    _u32.FindWindowW.restype = wintypes.HWND
+    _u32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
 
 
 def mantener_ritmo(prioridad: bool = False) -> bool:
@@ -73,6 +83,10 @@ def mantener_ritmo(prioridad: bool = False) -> bool:
     de verdad como se siente el cursor. Nunca lanza: en una version de Windows
     que no conozca estas llamadas, la app tiene que seguir arrancando.
     """
+    if not WINDOWS:
+        # Linux y macOS no estrangulan los procesos de fondo asi; no hay nada
+        # que desactivar y el cursor no se frena al minimizar.
+        return True
     try:
         info = _Throttling()
         info.Version = _VERSION_THROTTLING
@@ -103,6 +117,8 @@ def ventana_minimizada(titulo: str) -> bool:
     cuenta (su `getWindowProperty` solo dice si sigue abierta), asi que se
     pregunta a Windows directamente.
     """
+    if not WINDOWS:
+        return False           # ponytail: sin equivalente simple fuera de Windows
     hwnd = _u32.FindWindowW(None, titulo)
     return bool(hwnd) and bool(_u32.IsIconic(hwnd))
 
@@ -133,6 +149,8 @@ def comando_arranque() -> str:
 # --------------------------------------------------------------------------- #
 
 def autoarranque_activo() -> bool:
+    if winreg is None:
+        return False
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CLAVE_RUN) as k:
             winreg.QueryValueEx(k, NOMBRE_APP)
@@ -143,6 +161,8 @@ def autoarranque_activo() -> bool:
 
 def activar_autoarranque(comando: str | None = None) -> bool:
     """Registra la app para que se abra al iniciar sesion. True si lo consigue."""
+    if winreg is None:
+        return False       # ponytail: en Linux seria un .desktop en ~/.config/autostart
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CLAVE_RUN, 0,
                             winreg.KEY_SET_VALUE) as k:
@@ -155,6 +175,8 @@ def activar_autoarranque(comando: str | None = None) -> bool:
 
 
 def desactivar_autoarranque() -> bool:
+    if winreg is None:
+        return True
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CLAVE_RUN, 0,
                             winreg.KEY_SET_VALUE) as k:

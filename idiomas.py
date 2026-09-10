@@ -26,7 +26,7 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aceleracion": "Aceleracion",
         "aceleracion_pista": "empuje extra en gestos amplios",
         "compartir_camara": "Compartir con otras apps (Zoom, Teams…)",
-        "preguntar_camara": "Preguntar que camara usar al arrancar",
+        "aj_camara": "Camara",
         "ayuda_deteccion": ("La ventana de camara lleva un panel con el estado.\n"
                             "Salir de la deteccion:  tecla  Q  o cerrar la ventana.\n"
                             "Tecla  H:  esconder o mostrar ese panel.\n"
@@ -52,7 +52,6 @@ TEXTOS: dict[str, dict[str, str]] = {
         "estado_cancelado": "Grabacion cancelada",
         "estado_sin_teclado": "No se pudo capturar el teclado en este equipo",
         "estado_camara_ocupada": "La camara sigue ocupada; espera un momento y vuelve a darle",
-        "estado_elige_camara": "Elige la camara en la ventana que se acaba de abrir",
         "estado_sin_asignar": "{gesto} sin asignar",
         # --- Ajustes ---
         "ajustes_titulo": "Ajustes",
@@ -193,7 +192,7 @@ TEXTOS: dict[str, dict[str, str]] = {
         "aceleracion": "Acceleration",
         "aceleracion_pista": "extra push on wide gestures",
         "compartir_camara": "Share with other apps (Zoom, Teams…)",
-        "preguntar_camara": "Ask which camera to use on startup",
+        "aj_camara": "Camera",
         "ayuda_deteccion": ("The camera window has a status panel on it.\n"
                             "Quit detection:  press  Q  or close the window.\n"
                             "Press  H:  hide or show that panel.\n"
@@ -217,7 +216,6 @@ TEXTOS: dict[str, dict[str, str]] = {
         "estado_cancelado": "Recording cancelled",
         "estado_sin_teclado": "Could not capture the keyboard on this machine",
         "estado_camara_ocupada": "The camera is still busy; wait a moment and try again",
-        "estado_elige_camara": "Pick your camera in the window that just opened",
         "estado_sin_asignar": "{gesto} unassigned",
         "ajustes_titulo": "Settings",
         "aj_general": "General",

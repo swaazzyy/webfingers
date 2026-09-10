@@ -38,7 +38,6 @@ def carpeta_base() -> Path:
 
 
 RUTA_CONFIG = carpeta_base() / config.RUTA_DEFECTO_NOMBRE
-RUTA_PREF_CAMARA = carpeta_base() / "config_camara.json"
 
 # --------------------------------------------------------------------------- #
 # Temas
@@ -60,6 +59,9 @@ TEMAS = {
         "boton": "#e8eaee", "boton_txt": "#2b2f36",
     },
 }
+
+# Opciones del selector de camara: "Automatica" = la primera que responda.
+CAMARAS = ["Auto", "0", "1", "2", "3"]
 
 # Icono textual de cada forma, para reconocerla de un vistazo en el editor.
 ICONOS = {
@@ -278,17 +280,33 @@ class Launcher:
         self.vista.marco.grid(row=0, column=0, columnspan=2, sticky="w",
                               pady=(0, 8))
         self.var_compartir = tk.BooleanVar()
-        self.var_menu = tk.BooleanVar()
         self.checks = []
-        for fila, (clave, var) in enumerate([
-                ("compartir_camara", self.var_compartir),
-                ("preguntar_camara", self.var_menu)]):
-            chk = tk.Checkbutton(panel_c, text=self.t(clave), variable=var,
-                                 anchor="w", font=("Segoe UI", 9), bd=0,
-                                 highlightthickness=0, cursor="hand2")
-            chk.grid(row=fila + 1, column=0, sticky="w", pady=2)
-            self._reg(chk, "tarjeta", "texto", clave=clave, check=True)
-            self.checks.append(chk)
+        chk = tk.Checkbutton(panel_c, text=self.t("compartir_camara"),
+                             variable=self.var_compartir, anchor="w",
+                             font=("Segoe UI", 9), bd=0,
+                             highlightthickness=0, cursor="hand2")
+        chk.grid(row=1, column=0, columnspan=2, sticky="w", pady=2)
+        self._reg(chk, "tarjeta", "texto", clave="compartir_camara", check=True)
+        self.checks.append(chk)
+
+        # Selector de camara: sustituye al menu de miniaturas que se abria al
+        # arrancar la deteccion. Aqui se elige VIENDOLA en la vista previa de
+        # arriba, que es mas directo y no bloquea el arranque esperando un clic.
+        fila_cam = tk.Frame(panel_c)
+        fila_cam.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self._reg(fila_cam, "tarjeta")
+        lab_cam = tk.Label(fila_cam, text=self.t("aj_camara"),
+                           font=("Segoe UI", 9), anchor="w")
+        lab_cam.pack(side="left")
+        self._reg(lab_cam, "tarjeta", "texto", clave="aj_camara")
+        self.var_camara = tk.StringVar()
+        om_cam = tk.OptionMenu(fila_cam, self.var_camara, *CAMARAS)
+        om_cam.configure(bd=0, width=10, highlightthickness=0, anchor="w",
+                         cursor="hand2", font=("Segoe UI", 9))
+        om_cam.pack(side="left", padx=(8, 0))
+        self.menus_gestos.append(om_cam)          # se repinta con el tema
+        self._menus_desplegables.append(om_cam["menu"])
+        self.var_camara.trace_add("write", lambda *_: self._camara_cambiada())
 
         # ---- Ayuda (derecha) --------------------------------------------- #
         panel_a = self._tarjeta(der, "sec_ayuda")
@@ -591,7 +609,8 @@ class Launcher:
         self.var_ganancia.set(cfg["sensibilidad"]["ganancia"])
         self.var_acel.set(cfg["sensibilidad"]["aceleracion"])
         self.var_compartir.set(cfg["camara"]["compartir"])
-        self.var_menu.set(cfg["camara"]["menu_siempre"])
+        ind = cfg["camara"]["indice"]
+        self.var_camara.set("Auto" if ind is None else str(ind))
         self.tema = cfg["tema"]
 
     def leer_config(self) -> dict:
@@ -606,8 +625,8 @@ class Launcher:
         cfg["sensibilidad"]["ganancia"] = round(self.var_ganancia.get(), 2)
         cfg["sensibilidad"]["aceleracion"] = round(self.var_acel.get(), 2)
         cfg["camara"]["compartir"] = bool(self.var_compartir.get())
-        cfg["camara"]["menu_siempre"] = bool(self.var_menu.get())
-        cfg["camara"]["indice"] = self.cfg["camara"]["indice"]   # se conserva
+        elegida = self.var_camara.get()
+        cfg["camara"]["indice"] = None if elegida == "Auto" else int(elegida)
         return cfg
 
     # -- acciones de los botones ------------------------------------------- #
@@ -667,15 +686,17 @@ class Launcher:
         if self._receptor is not None:
             self.vista.escuchar(self._receptor)
         self.btn_iniciar.configure(text=self.t("detener"))
-        # Con "preguntar que camara" puesto, la deteccion abre su menu de camara
-        # y se queda esperando un clic. Desde aqui solo se veia la vista previa
-        # diciendo "Abriendo la camara..." mientras el menu esperaba en otra
-        # ventana, asi que parecia que no arrancaba nada.
-        self.estado.configure(
-            text=self.t("estado_elige_camara")
-            if self.cfg["camara"]["menu_siempre"] else self.t("estado_marcha"))
+        self.estado.configure(text=self.t("estado_marcha"))
         self._pintar_estado()
         self.raiz.after(1500, self._vigilar)
+
+    def _camara_cambiada(self) -> None:
+        """Reabre la vista previa con la camara recien elegida."""
+        if self._cargando or self._deteccion_viva():
+            return
+        elegida = self.var_camara.get()
+        self.cfg["camara"]["indice"] = None if elegida == "Auto" else int(elegida)
+        self._vista_en_reposo()
 
     def _soltar_vista(self) -> None:
         """Corta el puente con la deteccion y libera la memoria compartida."""
@@ -688,7 +709,7 @@ class Launcher:
         """Vuelve a enseñar la camara en directo, si la vista previa esta activa."""
         self.vista.parar()
         if self.cfg["deteccion"].get("vista_previa", True):
-            self.vista.arrancar_camara(self.cfg, RUTA_PREF_CAMARA)
+            self.vista.arrancar_camara(self.cfg)
 
     def _modo_iniciar(self) -> None:
         self.btn_iniciar.configure(text=self.t("iniciar"))

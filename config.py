@@ -222,7 +222,6 @@ DEFECTO = {
     "camara": {
         "indice": None,                     # None = detectar / preguntar
         "compartir": True,                  # MSMF (compartir con otras apps)
-        "menu_siempre": False,
     },
     # Atajos grabados por el usuario: id -> {"nombre": str, "teclas": [str,...]}
     # Sus claves son dinamicas, asi que se copian tal cual (ver _fusionar).
@@ -317,7 +316,6 @@ def _validar(cfg: dict) -> dict:
         except (TypeError, ValueError):
             cfg["camara"]["indice"] = None
     cfg["camara"]["compartir"] = bool(cfg["camara"]["compartir"])
-    cfg["camara"]["menu_siempre"] = bool(cfg["camara"]["menu_siempre"])
     return cfg
 
 

@@ -8,26 +8,20 @@ número y qué se ha comprobado. La guía de uso está en el
 
 ## Elegir la cámara
 
-Al arrancar, el programa **detecta las cámaras conectadas**. Si hay más de una,
-abre un menú con una **miniatura de cada una** para que pulses la que quieras:
-
-- Marca **"Recordar mi elección"** y no volverá a preguntar (se guarda en
-  `config_camara.json`, junto al programa). Bórralo para que vuelva a preguntar.
-- Con una sola cámara no molesta: la usa directamente.
-- Para forzar una fija `INDICE_CAMARA = 0` (o el número que sea) en el código, y
-  se salta el menú. Para que el menú salga **siempre**, `MENU_CAMARA_SIEMPRE = True`.
-- Los **nombres reales** ("Logitech C920"…) aparecen si instalas `pygrabber`
-  (`pip install pygrabber`); si no, se ven como "Camara 0", "Camara 1"…
+Se elige en la ventana principal, en el desplegable **Cámara** de la tarjeta
+CÁMARA, viéndola en la vista previa de encima. Con **Auto** se abre la primera
+que responda (índices 0 a 3).
 
 En portátiles esto resuelve un lío habitual: la cámara de infrarrojos de Windows
-Hello suele ocupar el índice 0, así que la webcam normal no es la primera.
+Hello suele ocupar el índice 0, así que la webcam normal no es la primera — con
+la vista previa delante se ve cuál es cuál sin adivinar.
 
-**Detección rápida.** El sondeo de cámaras usa **DirectShow**, que abre en
-milisegundos y falla al instante en índices vacíos; MSMF podía tardar 1-2 s *por
-índice*, así que buscar en 4 posiciones se hacía eterno. Además el sondeo no fija
-la resolución (renegociarla es lo lento) y lee un solo frame, que se reaprovecha
-como miniatura. Solo la cámara que **eliges** se abre luego con MSMF, para poder
-compartirla. Si con DirectShow no aparece ninguna, se reintenta con MSMF.
+> **Antes había un menú de miniaturas** que se abría al arrancar la detección:
+> sondeaba los cuatro índices, sacaba una foto de cada cámara y esperaba a que
+> hicieras clic. Se borró entero (~150 líneas) cuando la ventana principal pasó
+> a enseñar la cámara en vivo: hacía el mismo trabajo dos veces y, sobre todo,
+> **bloqueaba el arranque** hasta que alguien pulsaba. Ahora la detección abre la
+> cámara y muestra su ventana en unos 5 s, sin preguntar nada.
 
 ## Compartir la cámara con otras apps
 
@@ -575,10 +569,8 @@ Con pruebas automáticas, sin cámara:
   1080p, QHD y 4K, y con webcams de 640×480 a 1080p (dispersión < 0,05 %); el
   cursor no se sale por el borde de un monitor en coordenadas negativas; y
   ningún archivo distribuible contiene rutas absolutas.
-- **Cámara**: `compartir` prueba MSMF antes que DirectShow para el capture real;
-  la miniatura se codifica a PNG válido; el menú se salta con una sola cámara, se
-  respeta una preferencia guardada, `MENU_CAMARA_SIEMPRE` la fuerza,
-  `INDICE_CAMARA` manda sobre todo, y un `config_camara.json` corrupto se ignora.
+- **Cámara**: `compartir` prueba MSMF antes que DirectShow; con `indice: null` se
+  abren por orden los índices 0-3 y se usa el primero que entregue imagen.
 - **Detección rápida**: el sondeo usa DirectShow (no MSMF), no fija resolución,
   hace una sola lectura por cámara, etiqueta con el backend de uso real, y
   reintenta con MSMF solo si DirectShow no ve ninguna.

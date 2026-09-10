@@ -81,17 +81,20 @@ from control_windows import EntradaWindows
 # Configuracion
 # --------------------------------------------------------------------------- #
 
+# Lo que el usuario ajusta desde la ventana NO se escribe aqui: los valores de
+# fabrica viven solo en `config.DEFECTO` y `aplicar_config` los vuelca en estas
+# variables al arrancar. Antes estaban en los dos sitios y habia que acordarse
+# de cambiarlos a la vez.
+_D = config.por_defecto()
+
 # Camara --------------------------------------------------------------------- #
-# None = detecta las camaras conectadas y, si hay mas de una, abre un menu para
-# elegir. Pon un numero para forzar una en concreto (se salta el menu).
-INDICE_CAMARA = None
-CAMARAS_A_PROBAR = 4         # cuantos indices (0..N-1) explorar al detectar
-MENU_CAMARA_SIEMPRE = False  # True = mostrar el menu en cada arranque
-COMPARTIR_CAMARA = True      # True = usar MSMF para poder compartir con otras apps
+INDICE_CAMARA = _D["camara"]["indice"]        # None = la primera que responda
+CAMARAS_A_PROBAR = 4         # cuantos indices (0..N-1) probar cuando es None
+COMPARTIR_CAMARA = _D["camara"]["compartir"]  # MSMF: compartir con otras apps
 
 # Resolucion que se le PIDE a la camara; puede no concederla, asi que el codigo
 # siempre trabaja con el tamano real del frame recibido.
-ANCHO, ALTO = 960, 540
+ANCHO, ALTO = (int(v) for v in _D["deteccion"]["resolucion"].split("x"))
 NOMBRE_VENTANA = "Detector de gestos - MediaPipe"
 # Una sola mano: se controla con una y evita el bug de que el puntero salte a
 # la otra mano que aparezca en el encuadre. MediaPipe no garantiza el orden de
@@ -111,13 +114,13 @@ VENTANA_SUAVIZADO = 5      # nº de frames para el voto mayoritario del gesto
 # --- Control por gestos ---------------------------------------------------- #
 CONTROL_ACTIVO = True      # estado inicial del control
 SIMULAR_ENTRADA = False    # True = solo imprime las acciones, no toca el sistema
-ESPEJO = True              # ver la camara en espejo (lo natural para el usuario)
-MOSTRAR_VENTANA = True     # False = detectar sin ventana de camara
-MOSTRAR_HUD = True         # panel de estado sobre la camara (tecla h)
-SONIDO = True              # pitido al hacer clic o lanzar un atajo
+ESPEJO = _D["deteccion"]["espejo"]
+MOSTRAR_VENTANA = _D["deteccion"]["mostrar_ventana"]
+MOSTRAR_HUD = _D["deteccion"]["hud"]
+SONIDO = _D["app"]["sonido"]
 
 # Gesto mantenido para activar/desactivar el control (pulgar + menique):
-ESPERA_CONTROL = 1.2       # segundos
+ESPERA_CONTROL = _D["deteccion"]["espera_control"]
 
 # --- Puntero relativo (tipo raton / trackpad) ------------------------------ #
 # El puntero se desplaza segun cuanto muevas la mano, no segun donde este; al
@@ -129,8 +132,8 @@ ESPERA_CONTROL = 1.2       # segundos
 # fraccion de la pantalla, asi que el tacto es el mismo en cualquier equipo,
 # con cualquier resolucion de webcam y de monitor. Con pixeles crudos, la misma
 # app iba disparada en una pantalla 1080p y lentisima en una 4K.
-GANANCIA_PUNTERO = 2.0     # sensibilidad general (la ajusta el slider de la GUI)
-ACELERACION = 1.4          # empuje extra en gestos rapidos (0 = velocidad constante)
+GANANCIA_PUNTERO = _D["sensibilidad"]["ganancia"]   # lo ajusta el slider
+ACELERACION = _D["sensibilidad"]["aceleracion"]     # empuje en gestos rapidos
 
 # Velocidad del dedo a la que la aceleracion topa, en anchos de encuadre POR
 # SEGUNDO. En segundos y no "por frame" a proposito: a 120 fps cada frame recoge
@@ -200,7 +203,7 @@ GROSOR_ESTELA = 7          # grosor del trazo en la punta
 # --- Atajos de Windows ------------------------------------------------------ #
 # Cada forma de la mano puede lanzar un atajo (maximizar, Alt+Tab, subir
 # volumen...). Se dispara UNA VEZ y hay que soltar el gesto para repetirlo.
-ESPERA_ATAJO = 0.35        # s que hay que mantener el gesto antes de lanzarlo
+ESPERA_ATAJO = _D["deteccion"]["espera_atajo"]   # s manteniendo el gesto
 
 # Modelo: variante float16 (rapida). Para mas precision usar la ruta ".../full/..."
 MODELO = carpeta_base() / "hand_landmarker.task"
@@ -917,59 +920,26 @@ _SIN_CAMARA = (
     "aplicaciones de escritorio.\n"
     "- Si otra app la tiene en EXCLUSIVA (apps antiguas), cierrala; con Zoom o "
     "Teams (que comparten via Windows) no deberia hacer falta.\n"
-    "- Si tienes varias camaras, fija INDICE_CAMARA a mano en el codigo."
+    "- Si tienes varias camaras, elige cual en Ajustes > Camara."
 )
 
-RUTA_PREF_CAMARA = carpeta_base() / "config_camara.json"
-
-
 def abrir_camara() -> cv2.VideoCapture:
-    """Detecta las camaras, deja elegir en un menu y abre la elegida.
+    """Abre la camara elegida en los ajustes, o la primera que responda.
 
-    - `INDICE_CAMARA` fijado a mano se abre directo, sin detectar ni preguntar.
-    - Una preferencia guardada valida se reutiliza sin molestar.
-    - Con varias camaras (o `MENU_CAMARA_SIEMPRE`) se abre el menu con miniaturas.
+    Antes esto detectaba todas las camaras y abria un menu con miniaturas para
+    elegir. Ya no hace falta: la ventana principal enseña la camara en vivo, asi
+    que se elige alli viendola, y aqui solo se abre la que diga la config. El
+    menu ademas paraba el arranque hasta que alguien hacia clic.
     """
     orden = camara.backends(COMPARTIR_CAMARA)
-
-    # Atajos que evitan explorar todas las camaras (mas rapido al arrancar).
-    if INDICE_CAMARA is not None:
-        cap, backend = camara.abrir(INDICE_CAMARA, ANCHO, ALTO, orden)
+    candidatos = ([INDICE_CAMARA] if INDICE_CAMARA is not None
+                  else range(CAMARAS_A_PROBAR))
+    for indice in candidatos:
+        cap, backend = camara.abrir(indice, ANCHO, ALTO, orden)
         if cap is not None:
-            print(f"Camara {INDICE_CAMARA} ({camara.nombre_backend(backend)}).")
+            print(f"Camara {indice} ({camara.nombre_backend(backend)}).")
             return cap
-        raise SystemExit(f"La camara fijada (INDICE_CAMARA={INDICE_CAMARA}) no "
-                         f"responde.\n{_SIN_CAMARA}")
-
-    guardado = camara.cargar_preferencia(RUTA_PREF_CAMARA)
-    if guardado is not None and not MENU_CAMARA_SIEMPRE:
-        cap, backend = camara.abrir(guardado, ANCHO, ALTO, orden)
-        if cap is not None:
-            print(f"Camara {guardado} recordada ({camara.nombre_backend(backend)}).")
-            return cap
-        # La camara guardada ya no esta: se ignora y se detecta de nuevo.
-
-    print("Detectando camaras...")
-    camaras = camara.listar(ANCHO, ALTO, orden, CAMARAS_A_PROBAR)
-    if not camaras:
-        raise SystemExit(_SIN_CAMARA)
-    for c in camaras:
-        print(f"  [{c.indice}] {c.nombre}  {c.ancho}x{c.alto}  "
-              f"{camara.nombre_backend(c.backend)}")
-
-    indice, recordar = camara.elegir_indice(
-        camaras, forzado=None, guardado=guardado,
-        menu_siempre=MENU_CAMARA_SIEMPRE, dialogo=camara.menu_grafico)
-    if indice is None:
-        raise SystemExit("No se eligio ninguna camara.")
-    if recordar:
-        camara.guardar_preferencia(RUTA_PREF_CAMARA, indice)
-
-    cap, backend = camara.abrir(indice, ANCHO, ALTO, orden)
-    if cap is None:
-        raise SystemExit(_SIN_CAMARA)
-    print(f"Usando camara {indice} ({camara.nombre_backend(backend)}).")
-    return cap
+    raise SystemExit(_SIN_CAMARA)
 
 
 # --------------------------------------------------------------------------- #
@@ -984,7 +954,7 @@ def aplicar_config(cfg: dict) -> dict:
     Devuelve el mapa forma -> accion.
     """
     global GANANCIA_PUNTERO, ACELERACION
-    global INDICE_CAMARA, COMPARTIR_CAMARA, MENU_CAMARA_SIEMPRE
+    global INDICE_CAMARA, COMPARTIR_CAMARA
     global ANCHO, ALTO, ESPEJO, LARGO_ESTELA, MOSTRAR_VENTANA, MOSTRAR_HUD
     global ESPERA_ATAJO, ESPERA_CONTROL, SONIDO
 
@@ -992,7 +962,6 @@ def aplicar_config(cfg: dict) -> dict:
     ACELERACION = cfg["sensibilidad"]["aceleracion"]
     INDICE_CAMARA = cfg["camara"]["indice"]
     COMPARTIR_CAMARA = cfg["camara"]["compartir"]
-    MENU_CAMARA_SIEMPRE = cfg["camara"]["menu_siempre"]
 
     d = cfg["deteccion"]
     ANCHO, ALTO = (int(v) for v in d["resolucion"].split("x"))

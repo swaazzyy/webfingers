@@ -176,14 +176,14 @@ def color_nivel(fraccion: float) -> tuple[int, int, int]:
     return VERDE
 
 
-def apagar(color, factor: float = 0.34) -> tuple[int, int, int]:
+def apagar(color) -> tuple[int, int, int]:
     """Version oscurecida de un color, para los bloques que no estan encendidos.
 
     OBS pinta la escala entera siempre, apagada la parte que no llega, para que
     se vea de un vistazo cuanto margen queda; sin ella un medidor a media altura
     no dice nada.
     """
-    return tuple(int(c * factor) for c in color)
+    return tuple(int(c * 0.34) for c in color)
 
 
 def recortar(v: float, minimo: float, maximo: float) -> float:

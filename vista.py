@@ -141,7 +141,7 @@ class VistaPrevia:
 
     # --- Fuente 1: la camara, con la deteccion parada ---------------------- #
 
-    def arrancar_camara(self, cfg: dict, ruta_pref) -> None:
+    def arrancar_camara(self, cfg: dict) -> None:
         """Abre la camara para previsualizar. No hace nada si ya esta abierta."""
         if self._hilo is not None or self._receptor is not None:
             return
@@ -152,21 +152,22 @@ class VistaPrevia:
         self._mostrar_aviso(self._txt("vista_esperando"), "vista_esperando")
         self._parar.clear()
         self._hilo = threading.Thread(target=self._leer_camara,
-                                      args=(dict(cfg), ruta_pref), daemon=True)
+                                      args=(dict(cfg),), daemon=True)
         self._hilo.start()
         self._programar()
 
-    def _leer_camara(self, cfg: dict, ruta_pref) -> None:
+    def _leer_camara(self, cfg: dict) -> None:
         """Hilo lector: abre la camara y va dejando el ultimo frame."""
         ancho, alto = (int(v) for v in cfg["deteccion"]["resolucion"].split("x"))
         orden = camara.backends(cfg["camara"]["compartir"])
         indice = cfg["camara"]["indice"]
-        if indice is None:
-            indice = camara.cargar_preferencia(ruta_pref)
-        if indice is None:
-            indice = 0                      # la primera; solo es para mirarse
-        cap, _ = camara.abrir(indice, ancho, alto, orden)
-        if cap is None:
+        # `indice: null` = "la que sea": se prueban las primeras hasta que una
+        # responda, igual que hace la deteccion.
+        for i in ([indice] if indice is not None else range(4)):
+            cap, _ = camara.abrir(i, ancho, alto, orden)
+            if cap is not None:
+                break
+        else:
             with self._lock:
                 self._ultimo = False        # False = no se pudo abrir
             return
