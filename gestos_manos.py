@@ -1032,8 +1032,7 @@ def main(cfg: dict | None = None, vista: str | None = None) -> None:
     # Este proceso mueve el cursor: si Windows lo frena al minimizar la ventana
     # (lo hace por defecto, ver sistema.mantener_ritmo), la mano sigue igual de
     # rapida pero el puntero empieza a ir a tirones. Se pide no ser frenado.
-    ritmo = sistema.mantener_ritmo(prioridad=True)
-    if not ritmo["estrangulamiento"]:
+    if not sistema.mantener_ritmo(prioridad=True):
         print("Aviso: Windows no dejo desactivar el ahorro de energia de este "
               "proceso; con la ventana minimizada el cursor puede ir a tirones.")
 
@@ -1065,8 +1064,7 @@ def main(cfg: dict | None = None, vista: str | None = None) -> None:
     # poder encenderlo con la tecla h aunque arranque apagado en los ajustes.
     panel = hud.HUD(idiomas.Textos(cfg["idioma"]), mapa, cfg)
     panel.visible = MOSTRAR_HUD
-    oculta = False                 # ventana minimizada: nadie mira el dibujo
-    fotogramas = 0
+    aviso_vista = False            # ya se aviso de que el frame no cabe
 
     try:
         with crear_detector() as detector:
@@ -1091,6 +1089,15 @@ def main(cfg: dict | None = None, vista: str | None = None) -> None:
                 if ESPEJO:
                     frame = cv2.flip(frame, 1)
                 alto, ancho = frame.shape[:2]
+
+                # --- ¿Hay alguien mirando? -------------------------------- #
+                # Se decide ANTES de dibujar nada. Con la ventana minimizada y
+                # sin vista previa escuchando, pintar el esqueleto, la estela,
+                # la mira y el HUD es trabajo para nadie, y ese tiempo se lo
+                # esta quitando al cursor, que es lo unico que importa entonces.
+                oculta = (MOSTRAR_VENTANA and emisor is None
+                          and sistema.ventana_minimizada(NOMBRE_VENTANA))
+                dibujar = (MOSTRAR_VENTANA and not oculta) or emisor is not None
 
                 # --- Inferencia ------------------------------------------- #
                 imagen_entrada = frame
@@ -1125,8 +1132,10 @@ def main(cfg: dict | None = None, vista: str | None = None) -> None:
                             accion_principal, pts_principal = accion, pts
                             forma_principal = forma
                             accion_cruda = mapa.get(cruda, NADA)
-                        color_mano = (COLOR_ACCION.get(accion) or COLOR_ATAJO)
-                        dibujar_esqueleto(frame, pts, color_mano)
+                        if dibujar:
+                            dibujar_esqueleto(
+                                frame, pts,
+                                COLOR_ACCION.get(accion) or COLOR_ATAJO)
                 else:
                     for s in suavizadores:
                         s.actualizar(DESCONOCIDO)
@@ -1180,12 +1189,17 @@ def main(cfg: dict | None = None, vista: str | None = None) -> None:
                                        escala=escala_mano(pts_principal),
                                        descartar=congelado_clic)
 
-                    color = COLOR_ACCION[accion_principal]
+                    # La estela se sigue apuntando aunque no se dibuje (cuesta
+                    # nada y asi no aparece cortada al restaurar la ventana).
                     estela_camara.append(punta)
-                    dibujar_estela(frame, estela_camara, color)
-                    dibujar_puntero(frame, punta, color, avance=puntero.avance,
-                                    pulsando=pulsando, arrastrando=arrastrando,
-                                    congelado=not mover)
+                    if dibujar:
+                        color = COLOR_ACCION[accion_principal]
+                        dibujar_estela(frame, estela_camara, color)
+                        dibujar_puntero(frame, punta, color,
+                                        avance=puntero.avance,
+                                        pulsando=pulsando,
+                                        arrastrando=arrastrando,
+                                        congelado=not mover)
 
                 elif es_atajo:
                     # Al soltar el gesto de apuntar, el cursor se queda donde
@@ -1204,18 +1218,7 @@ def main(cfg: dict | None = None, vista: str | None = None) -> None:
                     clics.soltar()
                     estela_camara.clear()
 
-                # Con la ventana minimizada y sin vista previa escuchando, no
-                # hay nadie mirando: dibujar el esqueleto, la mira y el HUD para
-                # nadie roba tiempo al cursor, que es lo unico que importa en
-                # ese momento. Se comprueba una vez cada medio segundo porque
-                # preguntarselo a Windows en cada frame tampoco es gratis.
-                if fotogramas % 15 == 0 and MOSTRAR_VENTANA and emisor is None:
-                    oculta = sistema.ventana_minimizada(NOMBRE_VENTANA)
-                fotogramas += 1
-
-                # Se dibuja si alguien lo va a mirar: la ventana propia de
-                # OpenCV, la vista previa de la ventana principal, o las dos.
-                if (MOSTRAR_VENTANA and not oculta) or emisor is not None:
+                if dibujar:
                     # --- HUD ----------------------------------------------- #
                     # Lo ultimo que se dibuja: va por encima del esqueleto y de
                     # la mira, como los docks de OBS sobre la previsualizacion.
@@ -1233,8 +1236,14 @@ def main(cfg: dict | None = None, vista: str | None = None) -> None:
                         empuje=puntero.empuje, ganancia=GANANCIA_PUNTERO,
                         arrastrando=arrastrando, progreso=progreso)
 
-                    if emisor is not None:
-                        emisor.enviar(frame)
+                    # Solo falla si la camara da un frame mas grande de lo
+                    # previsto, y se avisa UNA vez: sin esto la vista previa se
+                    # queda en "Abriendo la camara..." sin decir por que.
+                    if (emisor is not None and not emisor.enviar(frame)
+                            and not aviso_vista):
+                        aviso_vista = True
+                        print(f"La vista previa no admite frames de {ancho}x"
+                              f"{alto} (max {puente.ANCHO_MAX}x{puente.ALTO_MAX}).")
 
                 if MOSTRAR_VENTANA:
                     # Minimizada se sigue llamando a imshow (es lo que mantiene

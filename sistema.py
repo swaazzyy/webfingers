@@ -45,56 +45,55 @@ class _Throttling(ctypes.Structure):
                 ("StateMask", wintypes.ULONG)]
 
 
-def _kernel32():
-    """kernel32 con los tipos declarados.
+# Tipos declarados UNA vez, al importar. Declarar el retorno de
+# `GetCurrentProcess` no es opcional: devuelve un pseudo-handle (-1) y, sin
+# decirlo, ctypes lo trunca a 32 bits y todas las llamadas fallan con
+# ERROR_INVALID_HANDLE sin que se note por que.
+_k32 = ctypes.windll.kernel32
+_k32.GetCurrentProcess.restype = wintypes.HANDLE
+_k32.SetProcessInformation.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                       ctypes.c_void_p, wintypes.DWORD]
+_k32.SetProcessInformation.restype = wintypes.BOOL
+_k32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+_k32.SetPriorityClass.restype = wintypes.BOOL
 
-    Declarar el tipo de retorno de `GetCurrentProcess` no es opcional: devuelve
-    un pseudo-handle (-1) y, sin decirlo, ctypes lo trunca a 32 bits y todas las
-    llamadas fallan con ERROR_INVALID_HANDLE sin que se note por que.
-    """
-    k32 = ctypes.windll.kernel32
-    k32.GetCurrentProcess.restype = wintypes.HANDLE
-    k32.SetProcessInformation.argtypes = [wintypes.HANDLE, ctypes.c_int,
-                                          ctypes.c_void_p, wintypes.DWORD]
-    k32.SetProcessInformation.restype = wintypes.BOOL
-    k32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-    k32.SetPriorityClass.restype = wintypes.BOOL
-    return k32
+_u32 = ctypes.windll.user32
+_u32.FindWindowW.restype = wintypes.HWND
+_u32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
 
 
-def mantener_ritmo(prioridad: bool = False) -> dict:
+def mantener_ritmo(prioridad: bool = False) -> bool:
     """Pide a Windows que no frene este proceso al pasar a segundo plano.
 
     Con `prioridad` ademas sube la clase de prioridad un escalon (no a "alta":
     eso puede dejar sin CPU al resto del sistema, y aqui solo hace falta llegar
     a tiempo, no ganarle a todo el mundo).
 
-    Devuelve que ha funcionado de cada cosa. Nunca lanza: en una version de
-    Windows que no conozca estas llamadas, la app tiene que seguir arrancando.
+    Devuelve si se pudo quitar el estrangulamiento, que es lo unico que cambia
+    de verdad como se siente el cursor. Nunca lanza: en una version de Windows
+    que no conozca estas llamadas, la app tiene que seguir arrancando.
     """
-    resultado = {"estrangulamiento": False, "reloj": False, "prioridad": False}
     try:
-        k32 = _kernel32()
         info = _Throttling()
         info.Version = _VERSION_THROTTLING
         # ControlMask = "quiero decidir yo sobre esto"; StateMask = 0 = "no me
         # estrangules" y "no ignores mi resolucion de reloj de fondo".
         info.ControlMask = _EXECUTION_SPEED | _IGNORE_TIMER_RESOLUTION
         info.StateMask = 0
-        resultado["estrangulamiento"] = bool(k32.SetProcessInformation(
-            k32.GetCurrentProcess(), _ProcessPowerThrottling,
+        ok = bool(_k32.SetProcessInformation(
+            _k32.GetCurrentProcess(), _ProcessPowerThrottling,
             ctypes.byref(info), ctypes.sizeof(info)))
 
         # Reloj fino: afecta a las esperas del bucle (waitKey, sleeps). Python
         # 3.11+ ya duerme con temporizador de alta resolucion, pero OpenCV no.
-        resultado["reloj"] = ctypes.windll.winmm.timeBeginPeriod(1) == 0
+        ctypes.windll.winmm.timeBeginPeriod(1)
 
         if prioridad:
-            resultado["prioridad"] = bool(k32.SetPriorityClass(
-                k32.GetCurrentProcess(), _ABOVE_NORMAL_PRIORITY_CLASS))
+            _k32.SetPriorityClass(_k32.GetCurrentProcess(),
+                                  _ABOVE_NORMAL_PRIORITY_CLASS)
+        return ok
     except (OSError, AttributeError, ctypes.ArgumentError):
-        pass                    # Windows antiguo: se sigue, solo que mas lento
-    return resultado
+        return False            # Windows antiguo: se sigue, solo que mas lento
 
 
 def ventana_minimizada(titulo: str) -> bool:
@@ -104,14 +103,8 @@ def ventana_minimizada(titulo: str) -> bool:
     cuenta (su `getWindowProperty` solo dice si sigue abierta), asi que se
     pregunta a Windows directamente.
     """
-    try:
-        u32 = ctypes.windll.user32
-        u32.FindWindowW.restype = wintypes.HWND
-        u32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
-        hwnd = u32.FindWindowW(None, titulo)
-        return bool(hwnd) and bool(u32.IsIconic(hwnd))
-    except (OSError, AttributeError):
-        return False
+    hwnd = _u32.FindWindowW(None, titulo)
+    return bool(hwnd) and bool(_u32.IsIconic(hwnd))
 
 
 def carpeta_base() -> Path:

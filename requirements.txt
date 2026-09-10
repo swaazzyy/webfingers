@@ -2,6 +2,17 @@
 opencv-python>=4.8
 mediapipe>=0.10.14
 
+# numpy lo usa `puente.py` directamente (memoria compartida entre procesos). Ya
+# viene con opencv-python, pero se declara porque el codigo lo importa: si un
+# dia opencv deja de traerlo, esto lo dice en vez de romperse al arrancar.
+numpy>=1.21
+
+# Pillow NO se declara a proposito. La vista previa pasa los frames a Tk en
+# formato PPM (ver vista.py), asi que la ventana principal arranca sin Pillow ni
+# matplotlib. Al proceso de deteccion si le llegan, porque mediapipe los importa
+# por su cuenta (mediapipe -> matplotlib -> PIL); depender de eso para dibujar la
+# ventana era pedir que un cambio en mediapipe dejara la app sin interfaz.
+
 # Opcional: nombres reales de las camaras en el menu de seleccion.
 # Sin esto se muestran como "Camara 0", "Camara 1"... (todo lo demas funciona).
 # pygrabber>=0.2

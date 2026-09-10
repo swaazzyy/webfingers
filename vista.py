@@ -29,18 +29,13 @@ import threading
 import tkinter as tk
 
 import cv2
-from PIL import Image, ImageTk
 
 import camara
 
 # Grises del panel, a juego con el HUD (que copia los de OBS).
 FONDO = "#1b1b1b"
-BORDE = "#3f3f3f"
 CABECERA = "#2b2b2b"
-TEXTO = "#d8d8d8"
 TENUE = "#8a8a8a"
-VIVO = "#5ac85a"
-PARADO = "#6b7280"
 
 PERIODO_MS = 33          # ~30 frames por segundo, que es lo que da la camara
 
@@ -48,7 +43,7 @@ PERIODO_MS = 33          # ~30 frames por segundo, que es lo que da la camara
 class VistaPrevia:
     """Panel con la imagen de la camara y una cabecera tipo dock de OBS."""
 
-    def __init__(self, padre, t, ancho: int = 396, alto: int = 223) -> None:
+    def __init__(self, padre, t, ancho: int = 396, alto: int = 210) -> None:
         self.t = t                          # traductor de idiomas.py
         self.ancho, self.alto = ancho, alto
 
@@ -80,7 +75,6 @@ class VistaPrevia:
 
         self._imagen = None                 # referencia viva: si se pierde,
         #                                     Tk descarta el frame y sale negro
-        self._cap = None
         self._hilo: threading.Thread | None = None
         self._parar = threading.Event()
         self._lock = threading.Lock()
@@ -94,13 +88,16 @@ class VistaPrevia:
     # --- Textos ------------------------------------------------------------ #
 
     def _txt(self, clave: str) -> str:
-        return self.t(clave) if self.t is not None else clave
+        return self.t(clave)
 
     def retraducir(self, t) -> None:
         self.t = t
         self.titulo.configure(text=self._txt("vista_titulo"))
         if self._aviso:
-            self._mostrar_aviso(self._aviso_clave)
+            # Se guarda la CLAVE del mensaje, no el texto, justo para poder
+            # volver a traducirlo aqui. Pasar la clave como si fuera el texto
+            # dejaba escrito "vista_parada" en el panel al cambiar de idioma.
+            self._mostrar_aviso(self._txt(self._aviso_clave), self._aviso_clave)
 
     # --- Estado visible ---------------------------------------------------- #
 
@@ -112,19 +109,31 @@ class VistaPrevia:
         self.lienzo.configure(image="", text=texto)
 
     def _pintar(self, frame) -> None:
-        """Escala el frame al panel y lo dibuja."""
+        """Escala el frame al panel y lo dibuja.
+
+        Se pasa por PPM, que es un formato nativo de Tk y practicamente no se
+        comprime: codificarlo es poco mas que copiar bytes.
+
+        Asi la ventana principal arranca sin Pillow. Antes entraba de rebote
+        (mediapipe -> matplotlib -> pillow) y sin estar declarado en
+        requirements.txt: el dia que mediapipe dejara de tirar de matplotlib, la
+        ventana se habria quedado sin abrir por una dependencia que nadie habia
+        pedido. Cuesta 1,02 ms por frame frente a 0,84 con Pillow: 5 ms por
+        segundo a 30 fps.
+        """
         alto, ancho = frame.shape[:2]
         escala = min(self.ancho / ancho, self.alto / alto)
         destino = (max(1, int(ancho * escala)), max(1, int(alto * escala)))
         pequeno = cv2.resize(frame, destino, interpolation=cv2.INTER_AREA)
-        imagen = Image.fromarray(cv2.cvtColor(pequeno, cv2.COLOR_BGR2RGB))
-        self._imagen = ImageTk.PhotoImage(imagen)
+        ok, datos = cv2.imencode(".ppm", pequeno)
+        if not ok:
+            return
+        # La referencia hay que guardarla: si se pierde, Tk descarta la imagen
+        # y el panel se queda en negro.
+        self._imagen = tk.PhotoImage(data=datos.tobytes())
         self._aviso = ""
         self.lienzo.configure(image=self._imagen, text="")
         self.info.configure(text=f"{ancho}x{alto}")
-
-    def marcar(self, vivo: bool) -> None:
-        """Compatibilidad: el estado se ve en el pie, aqui ya no hay indicador."""
 
     def aplicar_tema(self, tema: dict) -> None:
         """El panel se queda oscuro siempre (es una imagen), solo el borde cambia."""
@@ -161,7 +170,6 @@ class VistaPrevia:
             with self._lock:
                 self._ultimo = False        # False = no se pudo abrir
             return
-        self._cap = cap
         try:
             while not self._parar.is_set():
                 ok, frame = cap.read()
@@ -173,21 +181,29 @@ class VistaPrevia:
                     self._ultimo = frame
         finally:
             cap.release()
-            self._cap = None
 
-    def parar_camara(self) -> None:
-        """Suelta la camara y espera al hilo.
+    def parar_camara(self) -> bool:
+        """Suelta la camara y espera al hilo. Devuelve si de verdad la solto.
 
         Se espera de verdad (`join`): si la deteccion arranca mientras este hilo
         sigue dentro de `read()`, la camara continua ocupada y el otro proceso
         no puede abrirla.
+
+        Si el hilo no termina a tiempo (una camara colgada puede dejar `read()`
+        bloqueado un buen rato), se CONSERVA la referencia y se devuelve False.
+        Antes se ponia a None de todas formas, y eso tenia dos consecuencias
+        feas: quien llamaba creia que la camara estaba libre, y el siguiente
+        `arrancar_camara` lanzaba un segundo hilo lector sobre la misma camara.
         """
         self._parar.set()
         if self._hilo is not None:
-            self._hilo.join(timeout=2.0)
+            self._hilo.join(timeout=3.0)
+            if self._hilo.is_alive():
+                return False
             self._hilo = None
         with self._lock:
             self._ultimo = None
+        return True
 
     # --- Fuente 2: los frames de la deteccion ------------------------------ #
 
@@ -196,9 +212,6 @@ class VistaPrevia:
         self._receptor = receptor
         self._mostrar_aviso(self._txt("vista_esperando"), "vista_esperando")
         self._programar()
-
-    def dejar_de_escuchar(self) -> None:
-        self._receptor = None
 
     # --- Bucle de refresco -------------------------------------------------- #
 
@@ -249,16 +262,15 @@ class VistaPrevia:
 
     # --- Cierre ------------------------------------------------------------- #
 
+    def dejar_de_escuchar(self) -> None:
+        """Corta el puente con la deteccion. Es el par de `escuchar`."""
+        self._receptor = None
+
     def parar(self) -> None:
         """Deja el panel quieto y en negro, sin camara ni puente."""
         self.parar_camara()
         self.dejar_de_escuchar()
-        if self._tarea is not None:
-            try:
-                self.lienzo.after_cancel(self._tarea)
-            except tk.TclError:
-                pass
-            self._tarea = None
-        self.marcar(False)
+        self.pausar()                  # cancela el refresco pendiente
+        self._pausada = False          # parado no es lo mismo que minimizado
         self.info.configure(text="")
         self._mostrar_aviso(self._txt("vista_parada"))

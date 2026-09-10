@@ -214,9 +214,9 @@ class HUD:
     ANCHO_GESTOS = 212
     ANCHO_PUNTERO = 232
 
-    def __init__(self, t=None, mapa: dict | None = None,
+    def __init__(self, t, mapa: dict | None = None,
                  cfg: dict | None = None) -> None:
-        self.t = t                        # traductor de idiomas.py (o None)
+        self.t = t                        # traductor de idiomas.py
         self.mapa = dict(mapa or {})      # forma de la mano -> accion
         self.cfg = cfg
         self.visible = True
@@ -241,9 +241,9 @@ class HUD:
 
     # --- Textos ------------------------------------------------------------ #
 
-    def _txt(self, clave: str, respaldo: str) -> str:
-        """Texto traducido, o el respaldo si se arranca sin traductor."""
-        return self.t(clave) if self.t is not None else respaldo
+    def _txt(self, clave: str) -> str:
+        """Texto en el idioma activo."""
+        return self.t(clave)
 
     def _accion(self, aid: str) -> str:
         """Nombre visible de una accion (el emoji se cae al pasar a ASCII)."""
@@ -347,11 +347,11 @@ class HUD:
         # Punto de estado. Verde con el control activo, gris en pausa; el rojo
         # se reserva al boton pulsado, igual que el REC de OBS.
         if not control:
-            color, estado = PAUSA, self._txt("hud_pausa", "EN PAUSA")
+            color, estado = PAUSA, self._txt("hud_pausa")
         elif arrastrando:
-            color, estado = REC, self._txt("hud_arrastre", "ARRASTRANDO")
+            color, estado = REC, self._txt("hud_arrastre")
         else:
-            color, estado = VIVO, self._txt("hud_activo", "CONTROL ACTIVO")
+            color, estado = VIVO, self._txt("hud_activo")
         cy, cx = h // 2, int(14 * e)
         cv2.circle(frame, (cx, cy), int(round(5 * e)), color, -1, cv2.LINE_AA)
         cv2.circle(frame, (cx, cy), int(round(5 * e)), SOMBRA, 1, cv2.LINE_AA)
@@ -381,7 +381,7 @@ class HUD:
         w = int(round(self.ANCHO_GESTOS * e))
         fila = int(round(19 * e))
         cy = self._dock(frame, x, y, w, self._alto_gestos(e),
-                        self._txt("hud_gestos", "GESTOS"), e) + int(3 * e)
+                        self._txt("hud_gestos"), e) + int(3 * e)
 
         col = int(w * 0.44)               # columna forma | columna accion
         ahora = time.perf_counter()
@@ -401,7 +401,7 @@ class HUD:
             base = cy + int(round(fila * 0.72))
             # "1 dedo - indice" -> "1 dedo": en una columna de 90 px no cabe la
             # explicacion, y el nombre corto ya identifica la forma.
-            nombre = ascii_seguro(self._txt(f"forma_{fid}", fid)).split("-")[0]
+            nombre = ascii_seguro(self._txt(f"forma_{fid}")).split("-")[0]
             texto(frame, recortar_texto(nombre, col - int(12 * e), 0.34 * e),
                   x + int(9 * e), base, 0.34 * e, TEXTO if activa else TENUE)
             texto(frame,
@@ -427,7 +427,7 @@ class HUD:
         w = int(round(self.ANCHO_PUNTERO * e))
         alto_m = int(round(self.ALTO_MEDIDOR * e))
         cy = self._dock(frame, x, y, w, self._alto_puntero(e),
-                        self._txt("hud_puntero", "PUNTERO"), e) + int(7 * e)
+                        self._txt("hud_puntero"), e) + int(7 * e)
         margen = int(9 * e)
 
         # Pico que baja solo, como el del mezclador: deja ver lo rapido que has
@@ -441,15 +441,15 @@ class HUD:
             self._pico_t = ahora
 
         self._medidor(frame, x + margen, cy, w - 2 * margen, alto_m,
-                      self._txt("hud_vel", "VEL"), velocidad, e, self._pico)
+                      self._txt("hud_vel"), velocidad, e, self._pico)
         cy += alto_m + int(5 * e)
         self._medidor(frame, x + margen, cy, w - 2 * margen, alto_m,
-                      self._txt("hud_senal", "SENAL"), confianza, e)
+                      self._txt("hud_senal"), confianza, e)
         cy += alto_m + int(18 * e)
 
         # Lectura numerica: la velocidad configurada y cuanta ganancia se esta
         # aplicando de verdad en este instante (curva de precision/aceleracion).
-        texto(frame, f"{self._txt('hud_ganancia', 'GANANCIA')}  {ganancia:.1f}x",
+        texto(frame, f"{self._txt('hud_ganancia')}  {ganancia:.1f}x",
               x + margen, cy, 0.34 * e, TENUE)
         der = f"{empuje:.1f}x"
         texto(frame, der, x + w - margen - ancho_texto(der, 0.34 * e), cy,
@@ -475,13 +475,13 @@ class HUD:
                 (f"CPU: {self._cpu:.1f}%, {self._fps:.2f} fps", TENUE),
                 (f"{ancho}x{alto}", TENUE),
                 (f"{self._ms:.1f} ms", TENUE),
-                (f"{self._txt('hud_perdidos', 'PERDIDOS')} {self._saltos}",
+                (f"{self._txt('hud_perdidos')} {self._saltos}",
                  REC if self._saltos else TENUE)):
             x += texto(frame, cadena, x, base, esc, color) + int(16 * e)
 
         # Las teclas, a la derecha y solo si sobra sitio de verdad: es lo unico
         # prescindible de esta barra.
-        pista = self._txt("hud_teclas", "Q salir - C on/off - H panel")
+        pista = self._txt("hud_teclas")
         an = ancho_texto(pista, esc)
         if x + int(20 * e) + an < ancho:
             texto(frame, pista, ancho - an - int(10 * e), base, esc, APAGADO)

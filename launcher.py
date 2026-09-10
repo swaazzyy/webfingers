@@ -88,6 +88,7 @@ class Launcher:
         self._menus_desplegables: list[tk.Menu] = []
         self.botones_atajo: dict[str, tk.Widget] = {}
         self.botones_grabar: dict[str, tk.Button] = {}
+        self.flechas: dict[str, tk.Label] = {}   # la punta de cada desplegable
         self._grabando: str | None = None      # gesto que se esta grabando
         self._grabador = None
         self._cargando = False                 # True mientras se vuelca la config
@@ -105,23 +106,15 @@ class Launcher:
         # Al minimizar se deja de pintar la vista previa: convertir 30 imagenes
         # por segundo para una ventana que no se ve le quita tiempo a la
         # deteccion, que es justo cuando el cursor se nota a tirones.
-        raiz.bind("<Unmap>", self._ventana_oculta)
-        raiz.bind("<Map>", self._ventana_visible)
+        # El evento tambien salta por widgets internos: solo interesa el de la
+        # ventana entera.
+        raiz.bind("<Unmap>", lambda e: e.widget is raiz and self.vista.pausar())
+        raiz.bind("<Map>", lambda e: e.widget is raiz and self.vista.reanudar())
         # Windows frena los procesos minimizados; aqui tambien se pide que no.
         sistema.mantener_ritmo()
         # La camara se abre despues de pintar la ventana: si se abriera antes,
         # la app tardaria un segundo largo en aparecer y pareceria colgada.
         raiz.after(300, self._vista_en_reposo)
-
-    def _ventana_oculta(self, evento) -> None:
-        # El evento tambien salta por widgets internos: solo interesa el de la
-        # ventana entera.
-        if evento.widget is self.raiz:
-            self.vista.pausar()
-
-    def _ventana_visible(self, evento) -> None:
-        if evento.widget is self.raiz:
-            self.vista.reanudar()
 
     # -- helpers de construccion ------------------------------------------- #
 
@@ -149,12 +142,14 @@ class Launcher:
 
     def _tarjeta(self, padre, clave: str) -> tk.Frame:
         """Bloque con titulo y un marco suave, para agrupar ajustes."""
+        # 9 y no 8: a 8 puntos, en mayusculas y en gris, los titulos de seccion
+        # habia que acercarse a leerlos.
         cab = tk.Label(padre, text=self.t(clave), anchor="w",
-                       font=("Segoe UI", 8, "bold"))
-        cab.pack(fill="x", pady=(14, 5))
+                       font=("Segoe UI", 9, "bold"))
+        cab.pack(fill="x", pady=(12, 4))
         self._reg(cab, "fondo", "sub", clave=clave)
 
-        marco = tk.Frame(padre, bd=1, relief="solid", padx=14, pady=12)
+        marco = tk.Frame(padre, bd=1, relief="solid", padx=14, pady=11)
         marco.pack(fill="x")
         self._reg(marco, "tarjeta")
         self._tarjetas.append(marco)
@@ -163,7 +158,7 @@ class Launcher:
     # -- construccion de la interfaz --------------------------------------- #
 
     def _construir(self) -> None:
-        cont = tk.Frame(self.raiz, padx=20, pady=16)
+        cont = tk.Frame(self.raiz, padx=18, pady=12)
         cont.pack(fill="both", expand=True)
         self._reg(cont, "fondo")
         self._raiz_cont = cont
@@ -216,12 +211,12 @@ class Launcher:
         for fila, fid in enumerate(config.FORMAS):
             ico = tk.Label(panel_g, text=ICONOS.get(fid, "•"),
                            font=("Segoe UI Emoji", 14), width=2)
-            ico.grid(row=fila, column=0, sticky="w", pady=4)
+            ico.grid(row=fila, column=0, sticky="w", pady=3)
             self._reg(ico, "tarjeta", "texto")
 
             lab = tk.Label(panel_g, text=config.etiqueta_forma(fid, self.t),
                            anchor="w", width=27, font=("Segoe UI", 10))
-            lab.grid(row=fila, column=1, sticky="w", pady=4)
+            lab.grid(row=fila, column=1, sticky="w", pady=3)
             self._reg(lab, "tarjeta", "texto", clave=f"forma_{fid}")
 
             # UN SOLO campo por gesto: muestra SIEMPRE lo que hace, sea una
@@ -231,8 +226,10 @@ class Launcher:
             var = tk.StringVar()
             self.gestos_var[fid] = var
             var.trace_add("write", lambda *_, f=fid: self._menu_cambiado(f))
-            om = self._menu_acciones(panel_g, var)
-            om.grid(row=fila, column=2, sticky="w", pady=4, padx=(12, 0))
+            om, flecha = self._menu_acciones(panel_g, var)
+            om.grid(row=fila, column=2, sticky="w", pady=3, padx=(12, 0))
+            flecha.grid(row=fila, column=3, sticky="w", pady=3)
+            self.flechas[fid] = flecha
             self.menus_gestos.append(om)
             self.botones_atajo[fid] = om     # el propio campo refleja el estado
 
@@ -242,18 +239,29 @@ class Launcher:
                                    relief="flat", cursor="hand2",
                                    font=("Segoe UI", 10),
                                    command=lambda f=fid: self._grabar_en(f))
-            grabar_btn.grid(row=fila, column=3, sticky="w", pady=4, padx=(6, 0))
+            grabar_btn.grid(row=fila, column=4, sticky="w", pady=3, padx=(10, 0))
             self.botones_grabar[fid] = grabar_btn
             self._reg(grabar_btn, "entrada", "texto")
 
             quitar = tk.Button(panel_g, text="✕", bd=0, relief="flat",
                                cursor="hand2", font=("Segoe UI", 8),
                                command=lambda f=fid: self._quitar_atajo(f))
-            quitar.grid(row=fila, column=4, sticky="w", pady=4, padx=(4, 0))
+            quitar.grid(row=fila, column=5, sticky="w", pady=3, padx=(4, 0))
             self._reg(quitar, "tarjeta", "sub")
 
-        # ---- Sensibilidad (derecha) -------------------------------------- #
-        panel_s = self._tarjeta(der, "sec_puntero")
+        # ---- Como se asignan los atajos (izquierda) ----------------------- #
+        nota = tk.Label(izq, anchor="w", justify="left", font=("Segoe UI", 9),
+                        pady=8, text=self.t("pista_gestos"))
+        nota.pack(fill="x")
+        self._reg(nota, "fondo", "sub", clave="pista_gestos")
+
+        # ---- Sensibilidad (izquierda, bajo los gestos) -------------------- #
+        # Aqui y no en la otra columna: el editor de gestos es alto y lo demas
+        # no, asi que la columna izquierda se quedaba con un tercio de la
+        # ventana en blanco mientras la derecha se estiraba hasta abajo. Ademas
+        # los dos bloques van juntos de sentido: que hace cada mano y como de
+        # rapido se mueve el cursor.
+        panel_s = self._tarjeta(izq, "sec_puntero")
         self.var_ganancia = tk.DoubleVar()
         self.var_acel = tk.DoubleVar()
         self._deslizador(panel_s, 0, "velocidad", self.var_ganancia,
@@ -282,18 +290,12 @@ class Launcher:
             self._reg(chk, "tarjeta", "texto", clave=clave, check=True)
             self.checks.append(chk)
 
-        # ---- Como se asignan los atajos (izquierda) ----------------------- #
-        nota = tk.Label(izq, anchor="w", justify="left", font=("Segoe UI", 9),
-                        pady=8, text=self.t("pista_gestos"))
-        nota.pack(fill="x")
-        self._reg(nota, "fondo", "sub", clave="pista_gestos")
-
         # ---- Ayuda (derecha) --------------------------------------------- #
         panel_a = self._tarjeta(der, "sec_ayuda")
         lab_a = tk.Label(panel_a, text=self.t("ayuda_deteccion"), justify="left",
                          anchor="w", font=("Segoe UI", 9))
         lab_a.pack(fill="x")
-        self._reg(lab_a, "tarjeta", "sub", clave="ayuda_deteccion")
+        self._reg(lab_a, "tarjeta", "texto", clave="ayuda_deteccion")
 
         # ---- Pie: estado + botones --------------------------------------- #
         pie = tk.Frame(cont)
@@ -335,13 +337,25 @@ class Launcher:
         grupo (Ventanas, Multimedia..., y "Mis atajos") abre su propio submenu.
         """
         etiqueta = dict(config.acciones(self.cfg, self.t))
+        # `indicatoron=True` dibuja el indicador clasico de Motif, un corchete
+        # suelto que en Windows parece un glifo que no ha cargado. Se apaga y se
+        # pone una flecha normal dentro del propio boton.
         boton = tk.Menubutton(padre, textvariable=var, width=24, anchor="w",
                               relief="flat", bd=0, highlightthickness=0,
                               font=("Segoe UI", 9), cursor="hand2",
-                              indicatoron=True)
+                              indicatoron=False, padx=8)
         menu = tk.Menu(boton, tearoff=0)
         boton.configure(menu=menu)
         self._menus_desplegables.append(menu)
+
+        # La flecha va en su PROPIA celda, no encima del boton: superpuesta se
+        # comia las ultimas letras de las acciones largas ("Clic izquierdo /
+        # arrastr⌄"). La coloca quien llama, para que el texto pueda recortarse
+        # limpio antes de llegar a ella.
+        flecha = tk.Label(padre, text="⌄", font=("Segoe UI", 9), cursor="hand2")
+        self._reg(flecha, "entrada", "sub")
+        flecha.bind("<Button-1>",
+                    lambda e, b=boton: b.event_generate("<Button-1>"))
 
         for titulo, ids in config.grupos(self.cfg, self.t):
             sub = tk.Menu(menu, tearoff=0)
@@ -353,7 +367,7 @@ class Launcher:
                     label=etiqueta[aid],
                     command=lambda v=var, t=etiqueta[aid]: v.set(t))
             menu.add_cascade(label=titulo, menu=sub)
-        return boton
+        return boton, flecha
 
     # -- grabacion de atajos, al estilo Discord ----------------------------- #
 
@@ -434,6 +448,12 @@ class Launcher:
             if widget is not None:
                 widget.configure(bg=t["primario"] if activo else t["entrada"],
                                  fg=t["primario_txt"] if activo else t["texto"])
+        # La flecha es un widget aparte, pegado al campo: si no se resalta con
+        # el, el control se queda medio azul y medio gris mientras grabas.
+        flecha = self.flechas.get(fid)
+        if flecha is not None:
+            flecha.configure(bg=t["primario"] if activo else t["entrada"],
+                             fg=t["primario_txt"] if activo else t["sub"])
 
     def _quitar_atajo(self, fid: str) -> None:
         """Deja el gesto sin accion."""
@@ -471,22 +491,37 @@ class Launcher:
 
     def _deslizador(self, padre, fila, clave, var, desde, hasta, paso,
                     clave_pista) -> None:
+        """Fila de ajuste: nombre y valor arriba, barra debajo, pista al pie.
+
+        El valor va en su propia etiqueta, a la derecha, y la barra lleva
+        `showvalue=0`. Con el valor activado, tk.Scale dibuja el numero FLOTANDO
+        encima del control: la fila quedaba descolocada y la barra parecia
+        partida en dos trozos sueltos.
+        """
+        padre.grid_columnconfigure(0, weight=1)
+
         lab = tk.Label(padre, text=self.t(clave), anchor="w",
                        font=("Segoe UI", 10))
         lab.grid(row=fila, column=0, sticky="w")
         self._reg(lab, "tarjeta", "texto", clave=clave)
 
+        valor = tk.Label(padre, text=f"{var.get():.1f}", anchor="e",
+                         font=("Segoe UI", 10, "bold"))
+        valor.grid(row=fila, column=1, sticky="e")
+        self._reg(valor, "tarjeta", "acento")
+        var.trace_add("write",
+                      lambda *_: valor.configure(text=f"{var.get():.1f}"))
+
         esc = tk.Scale(padre, variable=var, from_=desde, to=hasta,
-                       resolution=paso, orient="horizontal", length=250,
-                       showvalue=True, relief="flat", bd=0,
-                       highlightthickness=0, font=("Segoe UI", 8),
-                       sliderrelief="flat")
-        esc.grid(row=fila + 1, column=0, sticky="w")
+                       resolution=paso, orient="horizontal", showvalue=0,
+                       relief="flat", bd=0, highlightthickness=0,
+                       sliderrelief="flat", width=12, sliderlength=18)
+        esc.grid(row=fila + 1, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self._reg(esc, "tarjeta", "texto", escala=True)
 
         hint = tk.Label(padre, text=self.t(clave_pista), anchor="w",
                         font=("Segoe UI", 8))
-        hint.grid(row=fila + 2, column=0, sticky="w", pady=(0, 10))
+        hint.grid(row=fila + 2, column=0, columnspan=2, sticky="w", pady=(2, 14))
         self._reg(hint, "tarjeta", "sub", clave=clave_pista)
 
     # -- temas -------------------------------------------------------------- #
@@ -502,7 +537,12 @@ class Launcher:
                 op.update(selectcolor=t["entrada"], activebackground=t[bg],
                           activeforeground=t[fg])
             if extra.get("escala"):
-                op.update(troughcolor=t["entrada"], activebackground=t["acento"],
+                # El tirador de tk.Scale se pinta con `bg`, y con el color de la
+                # tarjeta quedaba del mismo tono que el fondo: la barra parecia
+                # una linea partida por la mitad en vez de un control. Se pinta
+                # del color de acento, que es lo unico que se mueve ahi.
+                op.update(bg=t["acento"], troughcolor=t["entrada"],
+                          activebackground=t["primario"],
                           highlightbackground=t["tarjeta"])
             try:
                 widget.configure(**op)
@@ -609,7 +649,12 @@ class Launcher:
         # antes de lanzarlo: en Windows una webcam normal no se abre dos veces,
         # y si la vista previa la sigue teniendo, la deteccion arranca y muere
         # diciendo que no hay camara.
-        self.vista.parar_camara()
+        if not self.vista.parar_camara():
+            # El hilo lector no ha salido de `read()`. Arrancar ahora seria
+            # lanzar una deteccion que va a morir sola, asi que se avisa y no
+            # se lanza: mas vale no hacer nada que hacerlo mal en silencio.
+            self.estado.configure(text=self.t("estado_camara_ocupada"))
+            return
 
         orden = [self._interprete(), str(carpeta_base() / "gestos_manos.py")]
         try:
@@ -621,16 +666,20 @@ class Launcher:
         self.proceso = subprocess.Popen(orden, cwd=str(carpeta_base()))
         if self._receptor is not None:
             self.vista.escuchar(self._receptor)
-            self.vista.marcar(True)
         self.btn_iniciar.configure(text=self.t("detener"))
-        self.estado.configure(text=self.t("estado_marcha"))
+        # Con "preguntar que camara" puesto, la deteccion abre su menu de camara
+        # y se queda esperando un clic. Desde aqui solo se veia la vista previa
+        # diciendo "Abriendo la camara..." mientras el menu esperaba en otra
+        # ventana, asi que parecia que no arrancaba nada.
+        self.estado.configure(
+            text=self.t("estado_elige_camara")
+            if self.cfg["camara"]["menu_siempre"] else self.t("estado_marcha"))
         self._pintar_estado()
         self.raiz.after(1500, self._vigilar)
 
     def _soltar_vista(self) -> None:
         """Corta el puente con la deteccion y libera la memoria compartida."""
         self.vista.dejar_de_escuchar()
-        self.vista.marcar(False)
         if self._receptor is not None:
             self._receptor.cerrar()
             self._receptor = None

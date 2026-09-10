@@ -51,6 +51,8 @@ TEXTOS: dict[str, dict[str, str]] = {
         "estado_pulsa": "Pulsa las teclas…",
         "estado_cancelado": "Grabacion cancelada",
         "estado_sin_teclado": "No se pudo capturar el teclado en este equipo",
+        "estado_camara_ocupada": "La camara sigue ocupada; espera un momento y vuelve a darle",
+        "estado_elige_camara": "Elige la camara en la ventana que se acaba de abrir",
         "estado_sin_asignar": "{gesto} sin asignar",
         # --- Ajustes ---
         "ajustes_titulo": "Ajustes",
@@ -214,6 +216,8 @@ TEXTOS: dict[str, dict[str, str]] = {
         "estado_pulsa": "Press the keys…",
         "estado_cancelado": "Recording cancelled",
         "estado_sin_teclado": "Could not capture the keyboard on this machine",
+        "estado_camara_ocupada": "The camera is still busy; wait a moment and try again",
+        "estado_elige_camara": "Pick your camera in the window that just opened",
         "estado_sin_asignar": "{gesto} unassigned",
         "ajustes_titulo": "Settings",
         "aj_general": "General",

@@ -277,14 +277,30 @@ Se puede renunciar a ese ahorro proceso a proceso, y es lo que hace
 > ctypes lo trunca a 32 bits y todo falla con `ERROR_INVALID_HANDLE` sin decir
 > por qué. Están declaradas en `sistema._kernel32()`.
 
+Medido con el mismo gesto delante de la cámara, minimizando y restaurando tres
+veces seguidas:
+
+| | Antes | Ahora |
+|---|---:|---:|
+| Ritmo de la detección al minimizar | **74 %** del que tenía visible | **100 %** |
+| Estabilidad con la ventana visible | 12,7 – 27,3 fps | 30,0 fps constantes |
+
 Además se deja de dibujar lo que nadie puede ver:
 
 - si la **ventana de detección** está minimizada y la vista previa no está
-  escuchando, no se dibujan ni el esqueleto, ni la mira, ni el HUD (se consulta
-  a Windows con `IsIconic`, dos veces por segundo, no en cada frame);
+  escuchando, no se dibujan ni el esqueleto, ni la estela, ni la mira, ni el HUD
+  (se consulta a Windows con `IsIconic`, dos veces por segundo, no en cada
+  frame). Ahorra un **9 % de CPU** (46,6 % → 42,3 % de un núcleo): poco, porque
+  lo caro es la inferencia de MediaPipe, y esa tiene que seguir corriendo — es
+  justo la que mueve el cursor;
 - si la **ventana principal** está minimizada, la vista previa deja de convertir
   imágenes, pero **no suelta la cámara**: reabrirla cuesta segundos y taparla
   cuesta microsegundos.
+
+La comprobación se hace **antes** de dibujar nada, no al final del bucle. En la
+primera versión estaba después, así que el esqueleto, la estela y la mira se
+pintaban igual y solo se ahorraba el HUD: la mitad del ahorro que decía esta
+misma página.
 
 ## El HUD (estilo OBS Studio)
 
